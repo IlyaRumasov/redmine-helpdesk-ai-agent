@@ -1,0 +1,663 @@
+{
+ "name": "Support Agent: AD Account & Personal Mail",
+ "nodes": [
+  {
+   "parameters": {
+    "content": "## Support Agent: AD Account & Personal Mail\nКожні 5 хв бере нові нерозподілені задачі HelpDesk:\n* «Зміна пароля»: вимкнений обліковий запис AD -> увімкнути + посилання на портал скидання пароля;\n* «Зміна особистої пошти»: готує зміну postOfficeBox і просить підтвердження; змінює флоу «Apply Approved Changes» після коментаря «Погоджую» від адміна.\nПаролі не бачить і не надсилає. Лише в межах OU з Config.scope_dn. Решту передає «IT Адміни».\n\n**DRY_RUN** (Config): true = нічого не змінює, лише приватна нотатка і запис в аудит.",
+    "height": 230,
+    "width": 600
+   },
+   "type": "n8n-nodes-base.stickyNote",
+   "typeVersion": 1,
+   "position": [
+    -200,
+    -300
+   ],
+   "id": "a44c8eb1-d782-419e-9ca6-73e9c8e804c7",
+   "name": "Sticky Note"
+  },
+  {
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "field": "minutes",
+       "minutesInterval": 5
+      }
+     ]
+    }
+   },
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.2,
+   "position": [
+    0,
+    0
+   ],
+   "id": "26c3ca15-c5c1-4c09-ba6b-6de6f9f9de43",
+   "name": "Every 5 Min"
+  },
+  {
+   "parameters": {
+    "assignments": {
+     "assignments": [
+      {
+       "id": "a1",
+       "name": "dry_run",
+       "value": true,
+       "type": "boolean"
+      },
+      {
+       "id": "a2",
+       "name": "project_id",
+       "value": "<PROJECT_ID>",
+       "type": "string"
+      },
+      {
+       "id": "a3",
+       "name": "tracker_id",
+       "value": "<TRACKER_ID>",
+       "type": "string"
+      },
+      {
+       "id": "a4",
+       "name": "allowed_author_ids",
+       "value": "<COORDINATOR_IDS>",
+       "type": "string"
+      },
+      {
+       "id": "a5",
+       "name": "scope_dn",
+       "value": "OU=AllUsers,OU=ORG,DC=example,DC=com",
+       "type": "string"
+      },
+      {
+       "id": "a6",
+       "name": "protected_groups",
+       "value": "Domain Admins,Enterprise Admins,Administrators,Schema Admins",
+       "type": "string"
+      },
+      {
+       "id": "a7",
+       "name": "portal_url",
+       "value": "https://reset-password.example.com/",
+       "type": "string"
+      },
+      {
+       "id": "a8",
+       "name": "resolved_status_id",
+       "value": "17",
+       "type": "string"
+      },
+      {
+       "id": "a9",
+       "name": "admins_group_id",
+       "value": "35",
+       "type": "string"
+      }
+     ]
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-base.set",
+   "typeVersion": 3.4,
+   "position": [
+    220,
+    0
+   ],
+   "id": "08e2e756-44b7-402e-88bf-2981b971345a",
+   "name": "Config"
+  },
+  {
+   "parameters": {
+    "resource": "row",
+    "operation": "get",
+    "dataTableId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "<AUDIT_TABLE>"
+    },
+    "returnAll": true,
+    "matchType": "anyCondition",
+    "filters": {}
+   },
+   "type": "n8n-nodes-base.dataTable",
+   "typeVersion": 1.1,
+   "position": [
+    440,
+    0
+   ],
+   "id": "22419efb-7dc4-470e-a7aa-9465c624c0ec",
+   "name": "[Data Table] Get Processed",
+   "alwaysOutputData": true
+  },
+  {
+   "parameters": {
+    "operation": "getAll",
+    "returnAll": true,
+    "filters": {
+     "project_id": "={{ $('Config').first().json.project_id }}",
+     "tracker_id": "={{ $('Config').first().json.tracker_id }}",
+     "status_id": "1"
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-redmine.redmine",
+   "typeVersion": 1,
+   "position": [
+    660,
+    0
+   ],
+   "id": "3876f24a-b4b0-4d27-8e4a-78d1fb06f891",
+   "name": "[Redmine] Get New Tickets",
+   "credentials": {
+    "redmineApi": {
+     "id": "<REDMINE_CRED>",
+     "name": "Redmine <ENV> account"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "jsCode": "const cfg = $('Config').first().json;\nconst dry = cfg.dry_run === true || cfg.dry_run === 'true';\nconst allowed = String(cfg.allowed_author_ids).split(',').map(s => s.trim()).filter(Boolean);\n// у бойовому режимі заявки, яких торкався лише DRY RUN, обробляються заново\nconst seen = new Set($('[Data Table] Get Processed').all()\n  .filter(i => i.json.kind !== 'dispatch' && (dry || i.json.dry_run === false)).map(i => String(i.json.ticket_id)));\nconst OWN = /@(example|example)\\.(com|tech|us|eu)$/;\nconst DOMAIN = /\\.(com|net|org|tech|us|eu|io|ua|ai|dev|ru|pl)$/;\nconst out = [];\nfor (const t of ($input.first().json.issues || [])) {\n  if (t.assigned_to || seen.has(String(t.id))) continue;\n  const text = `${t.subject}\\n${t.description || ''}`.toLowerCase();\n  let kind = null;\n  if (/змін\\S*\\s+особист\\S*\\s+пошт/.test(text)) kind = 'mail';\n  else if (/(змін\\S*\\s+парол|скин\\S*\\s+парол|парол\\S*\\s+vpn)/.test(text)) kind = 'enable';\n  // блокування після невдалих входів (AD, SOGo, VPN): що саме робити, вирішує стан обліковки в AD\n  else if (/(заблок|розблок|locked out|account locked)/.test(text) && !/(redmine|редмайн|google|гугл|gmail|rivneshare|1с|1c)/.test(text)) kind = 'enable';\n  if (!kind && t.ai) kind = t.ai.type === 'mail_change' ? 'mail' : t.ai.type === 'password_reset' ? 'enable' : null;\n  if (!kind) continue;\n  const base = { ticket_id: t.id, kind, login: null, ticket_mail: null, old_mail: null, new_mail: null, reason: '' };\n  const esc = reason => out.push({ ...base, kind: 'escalate', request: kind, reason });\n  if (!allowed.includes(String(t.author && t.author.id))) { esc('автор задачі не входить до списку координаторів'); continue; }\n  const mails = [...new Set(text.match(/[\\w.+-]+@[\\w-]+(\\.[\\w-]+)+/g) || [])];\n  const ext = mails.filter(m => !OWN.test(m));\n  const clean = text.replace(/https?:\\/\\/\\S+/g, ' ').replace(/[\\w.+-]+@[\\w.-]+/g, ' ');\n  const own = mails.filter(m => OWN.test(m)).map(m => m.split('@')[0]);\n  let logins = [...new Set((clean.match(/[a-z0-9][a-z0-9._-]*[a-z0-9]/g) || []).concat(own)\n    .filter(w => /[._]/.test(w) && /[a-z].*[a-z]/.test(w) && !DOMAIN.test(w)))];\n  if (!logins.length && t.ai) logins = [...new Set((t.ai.logins || []).map(x => String(x).toLowerCase()).filter(x => /^[a-z0-9][a-z0-9._-]*[a-z0-9]$/.test(x) && /[._]/.test(x)))];\n  if (logins.length !== 1) { esc(logins.length ? `у заявці кілька логінів (${logins.join(', ')})` : 'не знайшов у заявці логіну AD'); continue; }\n  base.login = logins[0];\n  if (kind === 'enable') {\n    if (ext.length > 1) { esc('у заявці кілька особистих адрес'); continue; }\n    base.ticket_mail = ext[0] || null;\n  } else {\n    // стару адресу ГА часто вже не має, тож достатньо нової; зміну підтверджує адміністратор\n    const m = text.match(/(?:із|з|from)\\s+([\\w.+-]+@[\\w-]+(?:\\.[\\w-]+)+)\\s+(?:на|to)\\s+([\\w.+-]+@[\\w-]+(?:\\.[\\w-]+)+)/);\n    if (m) { base.old_mail = m[1]; base.new_mail = m[2]; }\n    else if (ext.length === 1) base.new_mail = ext[0];\n    else { esc(ext.length ? 'у заявці кілька адрес, не зрозуміло, яка нова' : 'у заявці немає нової особистої адреси'); continue; }\n  }\n  out.push(base);\n}\n// Слоти для пошуку в AD (нода LDAP не приймає фільтр цілком із виразу): усі логіни, до 16, зайві = __none__\nconst SL = [...new Set(out.map(x => x.login).filter(Boolean))].map(x => String(x).replace(/[*()\\\\\\u0000]/g, '')).filter(Boolean).slice(0, 16);\nwhile (SL.length < 16) SL.push('__none__');\nif (out.length) out[0].slots = SL;\nreturn out.map(json => ({ json }));"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    880,
+    0
+   ],
+   "id": "322ea799-a072-4d79-9f8d-353d25fbf7e2",
+   "name": "Code: Parse Tickets"
+  },
+  {
+   "parameters": {
+    "baseDN": "DC=example,DC=com",
+    "searchFor": "custom",
+    "customFilter": "=(&(objectClass=user)(|(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[0] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[1] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[2] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[3] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[4] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[5] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[6] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[7] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[8] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[9] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[10] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[11] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[12] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[13] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[14] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[15] }})))",
+    "returnAll": true,
+    "options": {
+     "scope": "sub",
+     "attributes": [
+      "sAMAccountName",
+      "userAccountControl",
+      "postOfficeBox",
+      "memberOf",
+      "lockoutTime"
+     ]
+    }
+   },
+   "type": "n8n-nodes-base.ldap",
+   "typeVersion": 1,
+   "position": [
+    1100,
+    0
+   ],
+   "id": "547e2024-65f1-4900-8122-43cd9a3b2282",
+   "name": "[AD] Search Users",
+   "credentials": {
+    "ldap": {
+     "id": "<LDAP_CRED>",
+     "name": "LDAP service account"
+    }
+   },
+   "executeOnce": true,
+   "alwaysOutputData": true
+  },
+  {
+   "parameters": {
+    "jsCode": "const cfg = $('Config').first().json;\nconst dry = cfg.dry_run === true || cfg.dry_run === 'true';\nconst scope = ',' + String(cfg.scope_dn).toLowerCase();\nconst protectedGroups = String(cfg.protected_groups).toLowerCase().split(',').map(s => s.trim()).filter(Boolean);\nconst one = v => Array.isArray(v) ? v[0] : v;\nconst ad = $input.all().map(i => i.json).filter(j => j.sAMAccountName);\nreturn $('Code: Parse Tickets').all().map(({ json: t }) => {\n  const r = { ...t, dry_run: dry, action: 'escalate', dn: null, new_uac: null };\n  if (t.kind === 'escalate') return { json: r };\n  const esc = reason => ({ json: { ...r, reason } });\n  const hits = ad.filter(j => String(one(j.sAMAccountName)).toLowerCase() === t.login);\n  if (hits.length !== 1) return esc(hits.length ? 'кілька збігів в AD' : `логін ${t.login} не знайдено в AD (можливо, обліковий запис видалено)`);\n  const u = hits[0];\n  const dn = String(u.dn);\n  r.dn = dn;\n  if (!dn.toLowerCase().endsWith(scope)) return esc(`обліковий запис поза дозволеним OU (${dn})`);\n  const groups = [].concat(u.memberOf || []).map(g => String(g).toLowerCase());\n  if (groups.some(g => protectedGroups.some(p => g.startsWith('cn=' + p + ',')))) return esc('обліковий запис у привілейованій групі, змінює тільки людина');\n  const uac = parseInt(one(u.userAccountControl), 10) || 0;\n  const pobox = String(one(u.postOfficeBox) || '').trim().toLowerCase();\n  if (t.kind === 'enable') {\n    // вимкнений (неактивність) -> увімкнути; заблокований після невдалих входів (lockoutTime > 0) -> зняти блокування\n    const disabled = !!(uac & 2);\n    const locked = (Number(one(u.lockoutTime)) || 0) > 0;\n    if (!disabled && !locked) return esc('обліковий запис активний і не заблокований, потрібні нові дані для входу (це робить людина)');\n    if (disabled && !pobox) return esc('в AD немає особистої пошти, посилання на скидання пароля нікуди не прийде');\n    if (t.ticket_mail && t.ticket_mail !== pobox) return esc('пошта в заявці не збігається з особистою поштою в AD');\n    r.action = disabled ? 'enable' : 'unlock'; r.new_uac = String(uac & ~2); r.was_locked = locked;\n  } else {\n    if (uac & 2) return esc('обліковий запис вимкнено, спершу потрібна перевірка людиною');\n    if (t.new_mail === pobox) return esc('нова адреса така сама, як в AD');\n    r.current_mail = pobox;\n    r.old_mismatch = !!(t.old_mail && t.old_mail !== pobox);\n    r.action = 'request_approval';\n  }\n  return { json: r };\n});"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1320,
+    0
+   ],
+   "id": "4a47986e-7555-4f5d-8d99-b595d0105f67",
+   "name": "Code: Decide AD Action"
+  },
+  {
+   "parameters": {
+    "rules": {
+     "values": [
+      {
+       "conditions": {
+        "options": {
+         "caseSensitive": true,
+         "leftValue": "",
+         "typeValidation": "strict",
+         "version": 2
+        },
+        "conditions": [
+         {
+          "id": "r1",
+          "leftValue": "={{ ['enable', 'unlock'].includes($json.action) && !$json.dry_run }}",
+          "rightValue": "",
+          "operator": {
+           "type": "boolean",
+           "operation": "true",
+           "singleValue": true
+          }
+         }
+        ],
+        "combinator": "and"
+       },
+       "renameOutput": true,
+       "outputKey": "restore access"
+      }
+     ]
+    },
+    "options": {
+     "fallbackOutput": "extra",
+     "renameFallbackOutput": "report only"
+    }
+   },
+   "type": "n8n-nodes-base.switch",
+   "typeVersion": 3.2,
+   "position": [
+    1540,
+    0
+   ],
+   "id": "5f1aa9c1-7342-41e7-8b61-52f462511268",
+   "name": "Route by Action"
+  },
+  {
+   "parameters": {
+    "operation": "update",
+    "dn": "={{ $json.dn }}",
+    "attributes": {
+     "replace": [
+      {
+       "id": "userAccountControl",
+       "value": "={{ $json.new_uac }}"
+      },
+      {
+       "id": "lockoutTime",
+       "value": "0"
+      }
+     ]
+    }
+   },
+   "type": "n8n-nodes-base.ldap",
+   "typeVersion": 1,
+   "position": [
+    1760,
+    -260
+   ],
+   "id": "b8949f0c-0eda-454e-9fa9-53071842dffb",
+   "name": "[AD] Restore Access",
+   "credentials": {
+    "ldap": {
+     "id": "<LDAP_CRED>",
+     "name": "LDAP service account"
+    }
+   },
+   "onError": "continueErrorOutput"
+  },
+  {
+   "parameters": {
+    "mode": "raw",
+    "jsonOutput": "={{ JSON.stringify({ ...$('Code: Decide AD Action').item.json, done: 'yes', error: '' }) }}",
+    "options": {}
+   },
+   "type": "n8n-nodes-base.set",
+   "typeVersion": 3.4,
+   "position": [
+    1980,
+    -200
+   ],
+   "id": "894924c5-9661-42f2-bf79-2bde7d9988df",
+   "name": "Mark Done"
+  },
+  {
+   "parameters": {
+    "mode": "raw",
+    "jsonOutput": "={{ JSON.stringify({ ...$('Code: Decide AD Action').item.json, done: 'no', error: String($json.error || 'невідома помилка') }) }}",
+    "options": {}
+   },
+   "type": "n8n-nodes-base.set",
+   "typeVersion": 3.4,
+   "position": [
+    1980,
+    -60
+   ],
+   "id": "29fe0626-46fd-4c1b-a48b-61fdb2f6c3c4",
+   "name": "Mark Failed"
+  },
+  {
+   "parameters": {
+    "numberInputs": 3
+   },
+   "type": "n8n-nodes-base.merge",
+   "typeVersion": 3.2,
+   "position": [
+    2200,
+    0
+   ],
+   "id": "3b84a690-466a-4d9c-b105-5fc821f1d983",
+   "name": "Merge Results"
+  },
+  {
+   "parameters": {
+    "jsCode": "const cfg = $('Config').first().json;\nconst portal = cfg.portal_url;\nreturn $input.all().map(({ json: j }) => {\n  let note, kind = j.action, close = false, assign = false, approval = false, payload = '', details = j.reason || '';\n  const failed = j.done === 'no';\n  if (j.action === 'unlock' && !failed) {\n    close = true;\n    note = `Вітаю. Обліковий запис ${j.login} розблоковано (його було заблоковано після кількох невдалих спроб входу). ГА може увійти зі своїм паролем; якщо пароль забуто, скористайтеся порталом ${portal}`;\n  } else if (j.action === 'enable' && !failed) {\n    close = true;\n    note = `Привіт! Ми успішно увімкнули обліковий запис ${j.login}. Тепер ГА може самостійно змінити пароль, скориставшись сервісом за посиланням: ${portal}`;\n  } else if (j.action === 'request_approval') {\n    kind = 'set_mail'; assign = true; approval = true;\n    payload = JSON.stringify({ login: j.login, dn: j.dn, old: j.current_mail, new: j.new_mail });\n    details = `${j.current_mail || '(порожньо)'} -> ${j.new_mail}`;\n    note = `Агент підготував зміну особистої пошти (поле «Почтовый ящик» в AD) для ${j.login}: ${details}.`\n      + (j.old_mismatch ? ` Увага: стара адреса в заявці (${j.old_mail}) не збігається з AD.` : '')\n      + ' Щоб виконати, учасник «IT Адміни» пише в задачі коментар «Погоджую», агент змінить пошту й закриє задачу. Щоб відхилити, закрийте задачу або нічого не пишіть (через 7 днів зміну буде скасовано).';\n  } else {\n    kind = 'escalate'; assign = true;\n    if (failed) details = `помилка AD під час дії «${j.action}»: ${j.error}`;\n    note = `Агент: автоматично не обробляю. Причина: ${details}. Передано адміністраторам.`;\n  }\n  if (j.dry_run) {\n    const would = j.action === 'enable' ? `увімкнув би ${j.login} і дав би посилання на портал`\n      : j.action === 'unlock' ? `зняв би блокування ${j.login} після невдалих входів і закрив би задачу`\n      : j.action === 'request_approval' ? `передав би на підтвердження зміну особистої пошти ${j.login}: ${details}`\n      : `передав би задачу адміністраторам. Причина: ${details}`;\n    note = `DRY RUN (змін не внесено). Агент ${would}.`;\n    close = false; assign = false;  // approval лишається: сухий рядок awaiting_approval дозволяє флоу Apply показати «виконав би»\n  }\n  return { json: { ticket_id: j.ticket_id, kind, note, private: j.dry_run || !['enable', 'unlock'].includes(kind), close, assign, approval,\n                   logins: j.login || '', outcome: approval ? 'awaiting_approval' : kind, details, payload,\n                   dry_run: j.dry_run, at: new Date().toISOString() } };\n});"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    2420,
+    0
+   ],
+   "id": "95491312-90a7-48b3-8c81-3a1ccd955094",
+   "name": "Code: Build Report"
+  },
+  {
+   "parameters": {
+    "operation": "update",
+    "issueId": "={{ $json.ticket_id }}",
+    "notes": "={{ $json.note }}",
+    "private_notes": "={{ $json.private }}",
+    "additionalFields": {
+     "status_id": "={{ $json.close ? $('Config').first().json.resolved_status_id : undefined }}",
+     "assigned_to_id": "={{ $json.assign ? $('Config').first().json.admins_group_id : undefined }}"
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-redmine.redmine",
+   "typeVersion": 1,
+   "position": [
+    2640,
+    0
+   ],
+   "id": "7a2bf8ea-b79c-4a28-885e-f922f145893a",
+   "name": "[Redmine] Update Ticket",
+   "credentials": {
+    "redmineApi": {
+     "id": "<REDMINE_CRED>",
+     "name": "Redmine <ENV> account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "resource": "row",
+    "operation": "insert",
+    "dataTableId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "<AUDIT_TABLE>"
+    },
+    "columns": {
+     "mappingMode": "defineBelow",
+     "matchingColumns": [],
+     "value": {
+      "ticket_id": "={{ $('Code: Build Report').item.json.ticket_id }}",
+      "kind": "={{ $('Code: Build Report').item.json.kind }}",
+      "logins": "={{ $('Code: Build Report').item.json.logins }}",
+      "outcome": "={{ $('Code: Build Report').item.json.outcome }}",
+      "dry_run": "={{ $('Code: Build Report').item.json.dry_run }}",
+      "details": "={{ $('Code: Build Report').item.json.details }}",
+      "at": "={{ $('Code: Build Report').item.json.at }}",
+      "payload": "={{ $('Code: Build Report').item.json.payload }}"
+     },
+     "schema": [
+      {
+       "id": "ticket_id",
+       "displayName": "ticket_id",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "number",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "kind",
+       "displayName": "kind",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "logins",
+       "displayName": "logins",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "outcome",
+       "displayName": "outcome",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "dry_run",
+       "displayName": "dry_run",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "boolean",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "details",
+       "displayName": "details",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "at",
+       "displayName": "at",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "payload",
+       "displayName": "payload",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      }
+     ]
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-base.dataTable",
+   "typeVersion": 1.1,
+   "position": [
+    2860,
+    0
+   ],
+   "id": "ceb23d59-5760-45fc-9916-5552a2772e4f",
+   "name": "[Data Table] Log Result"
+  }
+ ],
+ "connections": {
+  "Every 5 Min": {
+   "main": [
+    [
+     {
+      "node": "Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Config": {
+   "main": [
+    [
+     {
+      "node": "[Data Table] Get Processed",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Data Table] Get Processed": {
+   "main": [
+    [
+     {
+      "node": "[Redmine] Get New Tickets",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Redmine] Get New Tickets": {
+   "main": [
+    [
+     {
+      "node": "Code: Parse Tickets",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Code: Parse Tickets": {
+   "main": [
+    [
+     {
+      "node": "[AD] Search Users",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[AD] Search Users": {
+   "main": [
+    [
+     {
+      "node": "Code: Decide AD Action",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Code: Decide AD Action": {
+   "main": [
+    [
+     {
+      "node": "Route by Action",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Merge Results": {
+   "main": [
+    [
+     {
+      "node": "Code: Build Report",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Code: Build Report": {
+   "main": [
+    [
+     {
+      "node": "[Redmine] Update Ticket",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Redmine] Update Ticket": {
+   "main": [
+    [
+     {
+      "node": "[Data Table] Log Result",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Route by Action": {
+   "main": [
+    [
+     {
+      "node": "[AD] Restore Access",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Merge Results",
+      "type": "main",
+      "index": 2
+     }
+    ]
+   ]
+  },
+  "[AD] Restore Access": {
+   "main": [
+    [
+     {
+      "node": "Mark Done",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Mark Failed",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Mark Done": {
+   "main": [
+    [
+     {
+      "node": "Merge Results",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Mark Failed": {
+   "main": [
+    [
+     {
+      "node": "Merge Results",
+      "type": "main",
+      "index": 1
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1"
+ }
+}

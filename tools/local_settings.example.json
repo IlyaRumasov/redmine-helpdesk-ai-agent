@@ -1,0 +1,51 @@
+{
+ "n8n_url": "<N8N_URL>",
+ "n8n_key_file": "<N8N_KEY_FILE>",
+ "test_redmine_url": "<TEST_REDMINE_URL>",
+ "test_redmine_cred": {
+  "id": "<ID>",
+  "name": "<NAME>"
+ },
+ "test_redmine_http_cred": {
+  "id": "<ID>",
+  "name": "<NAME>"
+ },
+ "ldap_cred": {
+  "id": "<ID>",
+  "name": "<NAME>"
+ },
+ "test_table": "<TEST_TABLE>",
+ "test_ou": "<TEST_OU>",
+ "prod_redmine_cred": {
+  "id": "<ID>",
+  "name": "<NAME>"
+ },
+ "prod_table": "<PROD_TABLE>",
+ "google_cred": {
+  "id": "<ID>",
+  "name": "<NAME>"
+ },
+ "gemini_cred": {
+  "id": "<ID>",
+  "name": "<NAME>"
+ },
+ "prod_redmine_http_cred": {
+  "id": "<ID>",
+  "name": "<NAME>"
+ },
+ "prod_redmine_url": "<PROD_REDMINE_URL>",
+ "prod_leaver_project": "<ID>",
+ "linear_offboarding_id": "<ID>",
+ "admin_offboarding_id": "<ID>",
+ "equipment_check_id": "<ID>",
+ "glpi_cred": {
+  "id": "<ID>",
+  "name": "<NAME>"
+ },
+ "glpi_url": "<GLPI_URL>",
+ "smtp_cred": {
+  "id": "<ID>",
+  "name": "<NAME>"
+ },
+ "mail_from": "<SENDER_ADDRESS>"
+}

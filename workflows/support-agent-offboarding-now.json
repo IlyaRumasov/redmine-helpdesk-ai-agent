@@ -1,0 +1,611 @@
+{
+ "name": "Support Agent: Offboarding Now",
+ "nodes": [
+  {
+   "parameters": {
+    "content": "## Support Agent: Offboarding Now\nКожні 5 хв: заявки на звільнення, змінені за останні 15 хв. Коментар «Обробити зараз» від учасника «IT Адміни»\n-> одразу викликається флоу оффбордингу (трекер 41 лінійний, 25 адмін) лише для цієї заявки.\nОффбординг сам перевіряє дату, AD, Google і пише звіт. Команда пишеться в аудит і виконується один раз.",
+    "height": 190,
+    "width": 620
+   },
+   "type": "n8n-nodes-base.stickyNote",
+   "typeVersion": 1,
+   "position": [
+    -200,
+    -300
+   ],
+   "id": "297fd584-b712-49e2-ad95-9ae2772927d4",
+   "name": "Sticky Note"
+  },
+  {
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "field": "minutes",
+       "minutesInterval": 5
+      }
+     ]
+    }
+   },
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.2,
+   "position": [
+    0,
+    0
+   ],
+   "id": "39241ce8-ef84-4ead-8654-3b1e08bd1032",
+   "name": "Every 5 Min"
+  },
+  {
+   "parameters": {
+    "assignments": {
+     "assignments": [
+      {
+       "id": "a1",
+       "name": "redmine_url",
+       "value": "<REDMINE_URL>",
+       "type": "string"
+      },
+      {
+       "id": "a2",
+       "name": "project_id",
+       "value": "<LEAVER_PROJECT_ID>",
+       "type": "string"
+      },
+      {
+       "id": "a3",
+       "name": "linear_tracker_id",
+       "value": "41",
+       "type": "string"
+      },
+      {
+       "id": "a4",
+       "name": "admin_tracker_id",
+       "value": "25",
+       "type": "string"
+      },
+      {
+       "id": "a5",
+       "name": "linear_flow_id",
+       "value": "<LINEAR_OFFBOARDING_ID>",
+       "type": "string"
+      },
+      {
+       "id": "a6",
+       "name": "admin_flow_id",
+       "value": "<ADMIN_OFFBOARDING_ID>",
+       "type": "string"
+      },
+      {
+       "id": "a10",
+       "name": "equipment_flow_id",
+       "value": "<EQUIPMENT_CHECK_ID>",
+       "type": "string"
+      },
+      {
+       "id": "a7",
+       "name": "admins_group_id",
+       "value": "35",
+       "type": "string"
+      },
+      {
+       "id": "a8",
+       "name": "command_words",
+       "value": "обробити зараз,обработать сейчас",
+       "type": "string"
+      },
+      {
+       "id": "a9",
+       "name": "window_minutes",
+       "value": 15,
+       "type": "number"
+      }
+     ]
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-base.set",
+   "typeVersion": 3.4,
+   "position": [
+    220,
+    0
+   ],
+   "id": "20d4efd6-f302-4881-b55f-911c748150cf",
+   "name": "Config"
+  },
+  {
+   "parameters": {
+    "resource": "row",
+    "operation": "get",
+    "dataTableId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "<AUDIT_TABLE>"
+    },
+    "returnAll": true,
+    "matchType": "anyCondition",
+    "filters": {}
+   },
+   "type": "n8n-nodes-base.dataTable",
+   "typeVersion": 1.1,
+   "position": [
+    440,
+    0
+   ],
+   "id": "dd653102-4209-4c30-bd4f-98ab77b57b69",
+   "name": "[Data Table] Get Log",
+   "alwaysOutputData": true
+  },
+  {
+   "parameters": {
+    "url": "={{ $('Config').first().json.redmine_url }}/issues.json?project_id={{ $('Config').first().json.project_id }}&status_id=open&limit=100&updated_on=%3E%3D{{ encodeURIComponent(new Date(Date.now() - $('Config').first().json.window_minutes * 60000).toISOString().slice(0, 19) + 'Z') }}",
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpHeaderAuth",
+    "options": {}
+   },
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    660,
+    0
+   ],
+   "id": "5a6b5756-528b-440f-8216-503a234d0ece",
+   "name": "[Redmine] Get Recently Updated",
+   "credentials": {
+    "httpHeaderAuth": {
+     "id": "<REDMINE_HTTP_CRED>",
+     "name": "Redmine HTTP"
+    }
+   },
+   "executeOnce": true
+  },
+  {
+   "parameters": {
+    "jsCode": "// Відкриті заявки на звільнення, змінені нещодавно (може бути кілька сторінок, тут одна: за 15 хв їх небагато)\nreturn (($input.first().json.issues) || []).map(i => ({ json: { id: i.id, tracker_id: i.tracker && i.tracker.id, subject: i.subject } }));"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    880,
+    0
+   ],
+   "id": "67840f68-70e7-4b02-baac-f79005239ad9",
+   "name": "Code: Split Issues"
+  },
+  {
+   "parameters": {
+    "operation": "get",
+    "issueId": "={{ $json.id }}",
+    "include": [
+     "journals"
+    ],
+    "options": {}
+   },
+   "type": "n8n-nodes-redmine.redmine",
+   "typeVersion": 1,
+   "position": [
+    1100,
+    0
+   ],
+   "id": "14e9770b-01bf-43e4-b68a-f052e40d6a18",
+   "name": "[Redmine] Get Ticket History",
+   "credentials": {
+    "redmineApi": {
+     "id": "<REDMINE_CRED>",
+     "name": "Redmine <ENV> account"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "resource": "user",
+    "operation": "getAll",
+    "returnAll": true,
+    "filters": {
+     "group_id": "={{ $('Config').first().json.admins_group_id }}",
+     "status": "1"
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-redmine.redmine",
+   "typeVersion": 1,
+   "position": [
+    1320,
+    0
+   ],
+   "id": "35f420c4-b564-4cc1-9fba-10b0af7f71d9",
+   "name": "[Redmine] Get IT Admins",
+   "credentials": {
+    "redmineApi": {
+     "id": "<REDMINE_CRED>",
+     "name": "Redmine <ENV> account"
+    }
+   },
+   "executeOnce": true,
+   "alwaysOutputData": true
+  },
+  {
+   "parameters": {
+    "jsCode": "// Шукаємо свіжу команду «Обробити зараз» від учасника «IT Адміни». Кожну команду (id запису журналу) виконуємо один раз.\nconst cfg = $('Config').first().json;\nconst words = String(cfg.command_words).toLowerCase().split(',').map(s => s.trim()).filter(Boolean);\nconst admins = new Set((($('[Redmine] Get IT Admins').first().json.users) || []).map(u => String(u.id)));\nconst done = new Set($('[Data Table] Get Log').all().filter(r => r.json.kind === 'offboarding_command').map(r => String(r.json.payload)));\nconst since = Date.now() - Number(cfg.window_minutes) * 60000;\nconst tracker = { [String(cfg.linear_tracker_id)]: 'linear', [String(cfg.admin_tracker_id)]: 'admin' };\nconst out = [];\nfor (const { json: h } of $('[Redmine] Get Ticket History').all()) {\n  const i = h.issue || h;\n  const flow = tracker[String(i.tracker && i.tracker.id)];\n  if (!flow) continue;\n  const cmd = (i.journals || []).filter(j => {\n    const n = String(j.notes || '').trim().toLowerCase().replace(/[.!\\s]+$/, '');\n    return words.includes(n) && Date.parse(j.created_on) >= since && admins.has(String(j.user && j.user.id));\n  }).pop();\n  if (!cmd || done.has(String(cmd.id))) continue;\n  out.push({ json: { ticket_id: i.id, flow, journal_id: cmd.id, by: cmd.user.name, at: new Date().toISOString() } });\n}\nreturn out;"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1540,
+    0
+   ],
+   "id": "60d8d003-34c5-4a8d-ac5b-842ff9ad2939",
+   "name": "Code: Find Commands"
+  },
+  {
+   "parameters": {
+    "rules": {
+     "values": [
+      {
+       "conditions": {
+        "options": {
+         "caseSensitive": true,
+         "leftValue": "",
+         "typeValidation": "strict",
+         "version": 2
+        },
+        "conditions": [
+         {
+          "id": "rlinear",
+          "leftValue": "={{ $json.flow }}",
+          "rightValue": "linear",
+          "operator": {
+           "type": "string",
+           "operation": "equals"
+          }
+         }
+        ],
+        "combinator": "and"
+       },
+       "renameOutput": true,
+       "outputKey": "linear"
+      },
+      {
+       "conditions": {
+        "options": {
+         "caseSensitive": true,
+         "leftValue": "",
+         "typeValidation": "strict",
+         "version": 2
+        },
+        "conditions": [
+         {
+          "id": "radmin",
+          "leftValue": "={{ $json.flow }}",
+          "rightValue": "admin",
+          "operator": {
+           "type": "string",
+           "operation": "equals"
+          }
+         }
+        ],
+        "combinator": "and"
+       },
+       "renameOutput": true,
+       "outputKey": "admin"
+      }
+     ]
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-base.switch",
+   "typeVersion": 3.2,
+   "position": [
+    1760,
+    0
+   ],
+   "id": "484d1b6d-813f-406e-9d06-2c402ea3b6ec",
+   "name": "Route by Flow"
+  },
+  {
+   "parameters": {
+    "source": "database",
+    "workflowId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "={{ $('Config').first().json.equipment_flow_id }}"
+    },
+    "mode": "each",
+    "options": {
+     "waitForSubWorkflow": true
+    }
+   },
+   "type": "n8n-nodes-base.executeWorkflow",
+   "typeVersion": 1.2,
+   "position": [
+    1980,
+    -360
+   ],
+   "id": "f6da2481-cc9a-4357-830c-1b84450d89b0",
+   "name": "Run: Equipment Check",
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "source": "database",
+    "workflowId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "={{ $('Config').first().json.linear_flow_id }}"
+    },
+    "mode": "each",
+    "options": {
+     "waitForSubWorkflow": true
+    }
+   },
+   "type": "n8n-nodes-base.executeWorkflow",
+   "typeVersion": 1.2,
+   "position": [
+    1980,
+    -120
+   ],
+   "id": "5a17c85e-d74b-4a86-9e86-a767cea4b647",
+   "name": "Run: Linear Offboarding",
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "source": "database",
+    "workflowId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "={{ $('Config').first().json.admin_flow_id }}"
+    },
+    "mode": "each",
+    "options": {
+     "waitForSubWorkflow": true
+    }
+   },
+   "type": "n8n-nodes-base.executeWorkflow",
+   "typeVersion": 1.2,
+   "position": [
+    1980,
+    120
+   ],
+   "id": "7ba848a4-6104-4309-be7c-15575f7f5b79",
+   "name": "Run: Admin Offboarding",
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "resource": "row",
+    "operation": "insert",
+    "dataTableId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "<AUDIT_TABLE>"
+    },
+    "columns": {
+     "mappingMode": "defineBelow",
+     "matchingColumns": [],
+     "value": {
+      "ticket_id": "={{ $('Code: Find Commands').item.json.ticket_id }}",
+      "kind": "offboarding_command",
+      "outcome": "={{ $json.error ? 'ERROR: ' + ($json.error.message || $json.error) : 'started' }}",
+      "dry_run": "={{ false }}",
+      "details": "={{ 'флоу ' + $('Code: Find Commands').item.json.flow + ', команду дав ' + $('Code: Find Commands').item.json.by }}",
+      "at": "={{ $('Code: Find Commands').item.json.at }}",
+      "payload": "={{ String($('Code: Find Commands').item.json.journal_id) }}"
+     },
+     "schema": [
+      {
+       "id": "ticket_id",
+       "displayName": "ticket_id",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "number",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "kind",
+       "displayName": "kind",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "outcome",
+       "displayName": "outcome",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "dry_run",
+       "displayName": "dry_run",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "boolean",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "details",
+       "displayName": "details",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "at",
+       "displayName": "at",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "payload",
+       "displayName": "payload",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      }
+     ]
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-base.dataTable",
+   "typeVersion": 1.1,
+   "position": [
+    2200,
+    0
+   ],
+   "id": "08e60892-3823-41cd-acf2-bef2ccbc1b36",
+   "name": "[Data Table] Log Command"
+  }
+ ],
+ "connections": {
+  "Every 5 Min": {
+   "main": [
+    [
+     {
+      "node": "Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Config": {
+   "main": [
+    [
+     {
+      "node": "[Data Table] Get Log",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Data Table] Get Log": {
+   "main": [
+    [
+     {
+      "node": "[Redmine] Get Recently Updated",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Redmine] Get Recently Updated": {
+   "main": [
+    [
+     {
+      "node": "Code: Split Issues",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Code: Split Issues": {
+   "main": [
+    [
+     {
+      "node": "[Redmine] Get Ticket History",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Redmine] Get Ticket History": {
+   "main": [
+    [
+     {
+      "node": "[Redmine] Get IT Admins",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Redmine] Get IT Admins": {
+   "main": [
+    [
+     {
+      "node": "Code: Find Commands",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Run: Linear Offboarding": {
+   "main": [
+    [
+     {
+      "node": "[Data Table] Log Command",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Run: Admin Offboarding": {
+   "main": [
+    [
+     {
+      "node": "[Data Table] Log Command",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Code: Find Commands": {
+   "main": [
+    [
+     {
+      "node": "Run: Equipment Check",
+      "type": "main",
+      "index": 0
+     },
+     {
+      "node": "Route by Flow",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Route by Flow": {
+   "main": [
+    [
+     {
+      "node": "Run: Linear Offboarding",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Run: Admin Offboarding",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1"
+ }
+}

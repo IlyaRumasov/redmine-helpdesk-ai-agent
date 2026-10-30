@@ -1,0 +1,676 @@
+{
+ "name": "Support Agent: Apply Approved Changes",
+ "nodes": [
+  {
+   "parameters": {
+    "content": "## Support Agent: Apply Approved Changes\nКожні 5 хв перевіряє заявки, для яких агент підготував зміну (аудит: awaiting_approval).\nВиконує лише після коментаря «Погоджую» від учасника «IT Адміни» (не автора заявки) і якщо в AD нічого не змінилось.\nЗакрита задача або 7 днів без підтвердження = зміну скасовано.\nЗараз: зміна особистої пошти (postOfficeBox).\n\n**DRY_RUN** (Config): true = нічого не змінює.",
+    "height": 210,
+    "width": 620
+   },
+   "type": "n8n-nodes-base.stickyNote",
+   "typeVersion": 1,
+   "position": [
+    -200,
+    -300
+   ],
+   "id": "db040c19-d620-4739-ae25-c6be2b1ea84f",
+   "name": "Sticky Note"
+  },
+  {
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "field": "minutes",
+       "minutesInterval": 5
+      }
+     ]
+    }
+   },
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.2,
+   "position": [
+    0,
+    0
+   ],
+   "id": "d326b127-049d-4924-958f-dc406f84aa82",
+   "name": "Every 5 Min"
+  },
+  {
+   "parameters": {
+    "assignments": {
+     "assignments": [
+      {
+       "id": "a1",
+       "name": "dry_run",
+       "value": true,
+       "type": "boolean"
+      },
+      {
+       "id": "a2",
+       "name": "project_id",
+       "value": "<PROJECT_ID>",
+       "type": "string"
+      },
+      {
+       "id": "a3",
+       "name": "approve_words",
+       "value": "погоджую,підтверджую",
+       "type": "string"
+      },
+      {
+       "id": "a8",
+       "name": "pending_days",
+       "value": 7,
+       "type": "number"
+      },
+      {
+       "id": "a4",
+       "name": "resolved_status_id",
+       "value": "17",
+       "type": "string"
+      },
+      {
+       "id": "a5",
+       "name": "admins_group_id",
+       "value": "35",
+       "type": "string"
+      },
+      {
+       "id": "a6",
+       "name": "scope_dn",
+       "value": "OU=AllUsers,OU=ORG,DC=example,DC=com",
+       "type": "string"
+      },
+      {
+       "id": "a7",
+       "name": "portal_url",
+       "value": "https://reset-password.example.com/",
+       "type": "string"
+      }
+     ]
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-base.set",
+   "typeVersion": 3.4,
+   "position": [
+    220,
+    0
+   ],
+   "id": "686718d2-5d38-4de2-8459-d0f7128f76a1",
+   "name": "Config"
+  },
+  {
+   "parameters": {
+    "resource": "row",
+    "operation": "get",
+    "dataTableId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "<AUDIT_TABLE>"
+    },
+    "returnAll": true,
+    "matchType": "anyCondition",
+    "filters": {}
+   },
+   "type": "n8n-nodes-base.dataTable",
+   "typeVersion": 1.1,
+   "position": [
+    440,
+    0
+   ],
+   "id": "c2e485e9-7341-47c4-9617-317c4b031304",
+   "name": "[Data Table] Get Log",
+   "alwaysOutputData": true
+  },
+  {
+   "parameters": {
+    "jsCode": "const cfg = $('Config').first().json;\nconst dry = cfg.dry_run === true || cfg.dry_run === 'true';\n// останній бойовий запис аудиту по кожній заявці; беремо ті, що чекають на підтвердження\n// У DRY RUN дивимось на найновіший запис (і бойовий, і сухий): сухий «підготував би» теж чекає підтвердження,\n// а сухий «виконав би» вже новіший за нього, тому повторно заявку не беремо. У бойовому режимі лише бойові записи.\nconst last = {}, newest = {};\nfor (const { json: r } of $input.all()) {\n  if (!r.ticket_id) continue;\n  if (!newest[r.ticket_id] || String(r.at) > String(newest[r.ticket_id].at)) newest[r.ticket_id] = r;\n  if (r.dry_run === true) continue;\n  if (!last[r.ticket_id] || String(r.at) > String(last[r.ticket_id].at)) last[r.ticket_id] = r;\n}\nconst out = [];\nfor (const r of Object.values(dry ? newest : last)) {\n  if (r.outcome !== 'awaiting_approval' || r.kind !== 'set_mail') continue;  // гостьові дії підтверджує флоу Google Guest Apply\n  let p;\n  try { p = JSON.parse(r.payload); } catch (e) { continue; }\n  out.push({ json: { ticket_id: r.ticket_id, kind: r.kind, plan: p, prepared_at: r.at, dry_run: dry } });\n}\n// Слоти для пошуку в AD (нода LDAP не приймає фільтр цілком із виразу): усі логіни, до 16, зайві = __none__\nconst SL = [...new Set(out.map(x => x.json.plan && x.json.plan.login).filter(Boolean))].map(x => String(x).replace(/[*()\\\\\\u0000]/g, '')).filter(Boolean).slice(0, 16);\nwhile (SL.length < 16) SL.push('__none__');\nif (out.length) out[0].json.slots = SL;\nreturn out;"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    880,
+    0
+   ],
+   "id": "32b58778-8869-4aeb-b29a-fb660ee93907",
+   "name": "Code: Match Pending"
+  },
+  {
+   "parameters": {
+    "operation": "get",
+    "issueId": "={{ $json.ticket_id }}",
+    "include": [
+     "journals"
+    ],
+    "options": {}
+   },
+   "type": "n8n-nodes-redmine.redmine",
+   "typeVersion": 1,
+   "position": [
+    1100,
+    0
+   ],
+   "id": "5e8ce967-ed57-4be1-b0ed-72535bf6f52d",
+   "name": "[Redmine] Get Ticket History",
+   "credentials": {
+    "redmineApi": {
+     "id": "<REDMINE_CRED>",
+     "name": "Redmine <ENV> account"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "resource": "user",
+    "operation": "getAll",
+    "returnAll": true,
+    "filters": {
+     "group_id": "={{ $('Config').first().json.admins_group_id }}",
+     "status": "1"
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-redmine.redmine",
+   "typeVersion": 1,
+   "position": [
+    1320,
+    0
+   ],
+   "id": "21641487-8dab-4b85-b31a-def8a10af211",
+   "name": "[Redmine] Get IT Admins",
+   "credentials": {
+    "redmineApi": {
+     "id": "<REDMINE_CRED>",
+     "name": "Redmine <ENV> account"
+    }
+   },
+   "executeOnce": true,
+   "alwaysOutputData": true
+  },
+  {
+   "parameters": {
+    "baseDN": "DC=example,DC=com",
+    "searchFor": "custom",
+    "customFilter": "=(&(objectClass=user)(|(sAMAccountName={{ $('Code: Match Pending').first().json.slots[0] }})(sAMAccountName={{ $('Code: Match Pending').first().json.slots[1] }})(sAMAccountName={{ $('Code: Match Pending').first().json.slots[2] }})(sAMAccountName={{ $('Code: Match Pending').first().json.slots[3] }})(sAMAccountName={{ $('Code: Match Pending').first().json.slots[4] }})(sAMAccountName={{ $('Code: Match Pending').first().json.slots[5] }})(sAMAccountName={{ $('Code: Match Pending').first().json.slots[6] }})(sAMAccountName={{ $('Code: Match Pending').first().json.slots[7] }})(sAMAccountName={{ $('Code: Match Pending').first().json.slots[8] }})(sAMAccountName={{ $('Code: Match Pending').first().json.slots[9] }})(sAMAccountName={{ $('Code: Match Pending').first().json.slots[10] }})(sAMAccountName={{ $('Code: Match Pending').first().json.slots[11] }})(sAMAccountName={{ $('Code: Match Pending').first().json.slots[12] }})(sAMAccountName={{ $('Code: Match Pending').first().json.slots[13] }})(sAMAccountName={{ $('Code: Match Pending').first().json.slots[14] }})(sAMAccountName={{ $('Code: Match Pending').first().json.slots[15] }})))",
+    "returnAll": true,
+    "options": {
+     "scope": "sub",
+     "attributes": [
+      "sAMAccountName",
+      "postOfficeBox"
+     ]
+    }
+   },
+   "type": "n8n-nodes-base.ldap",
+   "typeVersion": 1,
+   "position": [
+    1540,
+    0
+   ],
+   "id": "a53aedd5-e688-4b11-92fd-afc566cd1cec",
+   "name": "[AD] Search Users",
+   "credentials": {
+    "ldap": {
+     "id": "<LDAP_CRED>",
+     "name": "LDAP service account"
+    }
+   },
+   "executeOnce": true,
+   "alwaysOutputData": true
+  },
+  {
+   "parameters": {
+    "jsCode": "const cfg = $('Config').first().json;\nconst scope = ',' + String(cfg.scope_dn).toLowerCase();\nconst words = String(cfg.approve_words).toLowerCase().split(',').map(s => s.trim()).filter(Boolean);\nconst maxAge = Number(cfg.pending_days) * 86400000;\nconst admins = new Set((($('[Redmine] Get IT Admins').first().json.users) || []).map(u => String(u.id)));\nconst one = v => Array.isArray(v) ? v[0] : v;\nconst ad = $input.all().map(i => i.json).filter(j => j.sAMAccountName);\nconst hist = {};\nfor (const { json: h } of $('[Redmine] Get Ticket History').all()) { const i = h.issue || h; if (i.id) hist[i.id] = i; }\nconst out = [];\nfor (const { json: t } of $('Code: Match Pending').all()) {\n  const r = { ...t, action: 'escalate', reason: '' };\n  const esc = reason => out.push({ json: { ...r, reason } });\n  const issue = hist[t.ticket_id];\n  if (!issue) { esc('не вдалося прочитати заявку'); continue; }\n  const author = String(issue.author && issue.author.id);\n  if (issue.status && issue.status.is_closed || ['17', '21'].includes(String(issue.status && issue.status.id))) {\n    out.push({ json: { ...r, action: 'cancel', reason: 'задачу закрито без підтвердження' } }); continue;\n  }\n  // коментар-підтвердження після того, як агент підготував зміну\n  const isWord = n => words.includes(String(n || '').trim().toLowerCase().replace(/[.!\\s]+$/, ''));\n  const notes = (issue.journals || []).filter(x => String(x.created_on) > String(t.prepared_at) && isWord(x.notes));\n  const ok = notes.filter(x => admins.has(String(x.user && x.user.id)) && String(x.user.id) !== author);\n  if (!ok.length) {\n    if (notes.length) { esc(`підтвердження написав ${notes[0].user.name}, але він не з «IT Адміни» або є автором заявки`); continue; }\n    if (Date.now() - Date.parse(t.prepared_at) > maxAge) { out.push({ json: { ...r, action: 'cancel', reason: `немає підтвердження понад ${cfg.pending_days} днів` } }); continue; }\n    continue; // ще чекаємо\n  }\n  r.approved_by = ok[0].user.name;\n  const hits = ad.filter(u => String(one(u.sAMAccountName)).toLowerCase() === t.plan.login);\n  if (hits.length !== 1) { esc(`логін ${t.plan.login} не знайдено в AD`); continue; }\n  const u = hits[0];\n  if (String(u.dn) !== t.plan.dn) { esc('обліковий запис в AD змінився після підготовки (інший DN)'); continue; }\n  if (!String(u.dn).toLowerCase().endsWith(scope)) { esc('обліковий запис поза дозволеним OU'); continue; }\n  const pobox = String(one(u.postOfficeBox) || '').trim().toLowerCase();\n  if (pobox !== (t.plan.old || '')) { esc('особиста пошта в AD змінилась після підготовки'); continue; }\n  r.action = 'set_mail'; r.dn = u.dn; r.new_mail = t.plan.new;\n  out.push({ json: r });\n}\nreturn out;"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1760,
+    0
+   ],
+   "id": "6ba9fe58-12ea-4f3b-aa91-905175762cb7",
+   "name": "Code: Decide Apply"
+  },
+  {
+   "parameters": {
+    "conditions": {
+     "options": {
+      "caseSensitive": true,
+      "leftValue": "",
+      "typeValidation": "strict",
+      "version": 2
+     },
+     "conditions": [
+      {
+       "id": "c1",
+       "leftValue": "={{ $json.action === 'set_mail' && !$json.dry_run }}",
+       "rightValue": "",
+       "operator": {
+        "type": "boolean",
+        "operation": "true",
+        "singleValue": true
+       }
+      }
+     ],
+     "combinator": "and"
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.2,
+   "position": [
+    1980,
+    0
+   ],
+   "id": "445bf105-c76d-49ec-8abf-5981e6c4356b",
+   "name": "Apply Now?"
+  },
+  {
+   "parameters": {
+    "operation": "update",
+    "dn": "={{ $json.dn }}",
+    "attributes": {
+     "replace": [
+      {
+       "id": "postOfficeBox",
+       "value": "={{ $json.new_mail }}"
+      }
+     ]
+    }
+   },
+   "type": "n8n-nodes-base.ldap",
+   "typeVersion": 1,
+   "position": [
+    2200,
+    -160
+   ],
+   "id": "eac90ec4-8974-49a9-ab75-2a8007e595eb",
+   "name": "[AD] Update Personal Mail",
+   "credentials": {
+    "ldap": {
+     "id": "<LDAP_CRED>",
+     "name": "LDAP service account"
+    }
+   },
+   "onError": "continueErrorOutput"
+  },
+  {
+   "parameters": {
+    "mode": "raw",
+    "jsonOutput": "={{ JSON.stringify({ ...$('Code: Decide Apply').item.json, done: 'yes', error: '' }) }}",
+    "options": {}
+   },
+   "type": "n8n-nodes-base.set",
+   "typeVersion": 3.4,
+   "position": [
+    2420,
+    -240
+   ],
+   "id": "629d978c-0b43-4852-be38-53fd72799f47",
+   "name": "Mark Done"
+  },
+  {
+   "parameters": {
+    "mode": "raw",
+    "jsonOutput": "={{ JSON.stringify({ ...$('Code: Decide Apply').item.json, done: 'no', error: String($json.error || 'невідома помилка') }) }}",
+    "options": {}
+   },
+   "type": "n8n-nodes-base.set",
+   "typeVersion": 3.4,
+   "position": [
+    2420,
+    -80
+   ],
+   "id": "2b2c7fb5-9ca8-4f0d-aede-1cdd9fac4ad2",
+   "name": "Mark Failed"
+  },
+  {
+   "parameters": {
+    "numberInputs": 3
+   },
+   "type": "n8n-nodes-base.merge",
+   "typeVersion": 3.2,
+   "position": [
+    2640,
+    0
+   ],
+   "id": "2609d762-fdb5-4107-a3bb-fd144eaa3e5a",
+   "name": "Merge Results"
+  },
+  {
+   "parameters": {
+    "jsCode": "const cfg = $('Config').first().json;\nreturn $input.all().map(({ json: j }) => {\n  const p = j.plan || {};\n  const failed = j.done === 'no';\n  let note, kind = 'set_mail', close = false, assign = false, details = j.reason || '';\n  if (j.action === 'set_mail' && !failed) {\n    close = true;\n    details = `${p.old || '(порожньо)'} -> ${p.new}, підтвердив ${j.approved_by}`;\n    note = `Доброго дня! Особиста пошта для ${p.login} змінена, для генерації нового паролю скористайтеся порталом ${cfg.portal_url}`;\n  } else if (j.action === 'cancel') {\n    kind = 'cancelled';\n    note = `Агент: зміну особистої пошти скасовано (${details}). Якщо вона ще потрібна, створіть нову заявку.`;\n  } else {\n    kind = 'escalate'; assign = true;\n    if (failed) details = `помилка AD під час зміни пошти: ${j.error}`;\n    note = `Агент: зміну пошти не виконано. Причина: ${details}. Потрібна перевірка людиною.`;\n  }\n  if (j.dry_run) {\n    note = `DRY RUN (змін не внесено). Агент ${kind === 'set_mail' ? 'змінив би пошту ' + p.login + ' на ' + p.new + ' і закрив би задачу' : 'не виконав би зміну. Причина: ' + details}.`;\n    close = false; assign = false;\n  }\n  return { json: { ticket_id: j.ticket_id, kind, note, private: j.dry_run || kind !== 'set_mail', close, assign,\n                   logins: p.login || '', outcome: kind === 'set_mail' && !j.dry_run ? 'applied' : kind, details,\n                   payload: JSON.stringify(p), dry_run: j.dry_run, at: new Date().toISOString() } };\n});"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    2860,
+    0
+   ],
+   "id": "b9516c2f-1dfd-4306-b1dc-2b836765253a",
+   "name": "Code: Build Report"
+  },
+  {
+   "parameters": {
+    "operation": "update",
+    "issueId": "={{ $json.ticket_id }}",
+    "notes": "={{ $json.note }}",
+    "private_notes": "={{ $json.private }}",
+    "additionalFields": {
+     "status_id": "={{ $json.close ? $('Config').first().json.resolved_status_id : undefined }}",
+     "assigned_to_id": "={{ $json.assign ? $('Config').first().json.admins_group_id : undefined }}"
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-redmine.redmine",
+   "typeVersion": 1,
+   "position": [
+    3080,
+    0
+   ],
+   "id": "69f3385f-961d-45bd-b4bb-f38e21b47362",
+   "name": "[Redmine] Update Ticket",
+   "credentials": {
+    "redmineApi": {
+     "id": "<REDMINE_CRED>",
+     "name": "Redmine <ENV> account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "resource": "row",
+    "operation": "insert",
+    "dataTableId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "<AUDIT_TABLE>"
+    },
+    "columns": {
+     "mappingMode": "defineBelow",
+     "matchingColumns": [],
+     "value": {
+      "ticket_id": "={{ $('Code: Build Report').item.json.ticket_id }}",
+      "kind": "={{ $('Code: Build Report').item.json.kind }}",
+      "logins": "={{ $('Code: Build Report').item.json.logins }}",
+      "outcome": "={{ $('Code: Build Report').item.json.outcome }}",
+      "dry_run": "={{ $('Code: Build Report').item.json.dry_run }}",
+      "details": "={{ $('Code: Build Report').item.json.details }}",
+      "at": "={{ $('Code: Build Report').item.json.at }}",
+      "payload": "={{ $('Code: Build Report').item.json.payload }}"
+     },
+     "schema": [
+      {
+       "id": "ticket_id",
+       "displayName": "ticket_id",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "number",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "kind",
+       "displayName": "kind",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "logins",
+       "displayName": "logins",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "outcome",
+       "displayName": "outcome",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "dry_run",
+       "displayName": "dry_run",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "boolean",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "details",
+       "displayName": "details",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "at",
+       "displayName": "at",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "payload",
+       "displayName": "payload",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      }
+     ]
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-base.dataTable",
+   "typeVersion": 1.1,
+   "position": [
+    3300,
+    0
+   ],
+   "id": "34483233-4c3a-450c-a8f2-728629a7a6d3",
+   "name": "[Data Table] Log Result"
+  }
+ ],
+ "connections": {
+  "Every 5 Min": {
+   "main": [
+    [
+     {
+      "node": "Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Config": {
+   "main": [
+    [
+     {
+      "node": "[Data Table] Get Log",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Data Table] Get Log": {
+   "main": [
+    [
+     {
+      "node": "Code: Match Pending",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Code: Match Pending": {
+   "main": [
+    [
+     {
+      "node": "[Redmine] Get Ticket History",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Redmine] Get Ticket History": {
+   "main": [
+    [
+     {
+      "node": "[Redmine] Get IT Admins",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Redmine] Get IT Admins": {
+   "main": [
+    [
+     {
+      "node": "[AD] Search Users",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[AD] Search Users": {
+   "main": [
+    [
+     {
+      "node": "Code: Decide Apply",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Code: Decide Apply": {
+   "main": [
+    [
+     {
+      "node": "Apply Now?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Merge Results": {
+   "main": [
+    [
+     {
+      "node": "Code: Build Report",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Code: Build Report": {
+   "main": [
+    [
+     {
+      "node": "[Redmine] Update Ticket",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Redmine] Update Ticket": {
+   "main": [
+    [
+     {
+      "node": "[Data Table] Log Result",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Apply Now?": {
+   "main": [
+    [
+     {
+      "node": "[AD] Update Personal Mail",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Merge Results",
+      "type": "main",
+      "index": 2
+     }
+    ]
+   ]
+  },
+  "[AD] Update Personal Mail": {
+   "main": [
+    [
+     {
+      "node": "Mark Done",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Mark Failed",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Mark Done": {
+   "main": [
+    [
+     {
+      "node": "Merge Results",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Mark Failed": {
+   "main": [
+    [
+     {
+      "node": "Merge Results",
+      "type": "main",
+      "index": 1
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1"
+ }
+}

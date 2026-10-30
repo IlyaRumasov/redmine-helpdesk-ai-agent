@@ -1,0 +1,875 @@
+{
+ "name": "Support Agent: Google Guest Access",
+ "nodes": [
+  {
+   "parameters": {
+    "content": "## Support Agent: Google Guest Access\nКожні 5 хв бере нові нерозподілені задачі HelpDesk «не можу увійти в гостьовий акаунт Google (2FA)».\nПеревіряє координатора, AD (працює, увімкнений, у дозволеному OU) і гостя Google (існує, гостьовий, прив'язаний до робочої пошти),\nдивиться стан гостя: лише код -> видає й надсилає на <логін>@example.com; пароль (з кодами, якщо акаунт заблоковано) -> готує дію\nі чекає коментаря «Погоджую» (виконує флоу Google Guest Apply). Нестандартне передає «IT Адміни».\nЗбереження даних запусків вимкнено: коди не лишаються в n8n.\n\n**DRY_RUN** (Config): true = нічого не змінює й не надсилає.",
+    "height": 230,
+    "width": 660
+   },
+   "type": "n8n-nodes-base.stickyNote",
+   "typeVersion": 1,
+   "position": [
+    -200,
+    -320
+   ],
+   "id": "e094f4de-a64a-470f-b009-71577e4f6e39",
+   "name": "Sticky Note"
+  },
+  {
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "field": "minutes",
+       "minutesInterval": 5
+      }
+     ]
+    }
+   },
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.2,
+   "position": [
+    0,
+    0
+   ],
+   "id": "8c6e3ace-284d-4444-940e-e940b4eb9ba6",
+   "name": "Every 5 Min"
+  },
+  {
+   "parameters": {
+    "assignments": {
+     "assignments": [
+      {
+       "id": "a1",
+       "name": "dry_run",
+       "value": true,
+       "type": "boolean"
+      },
+      {
+       "id": "a2",
+       "name": "project_id",
+       "value": "<PROJECT_ID>",
+       "type": "string"
+      },
+      {
+       "id": "a3",
+       "name": "tracker_id",
+       "value": "<TRACKER_ID>",
+       "type": "string"
+      },
+      {
+       "id": "a4",
+       "name": "allowed_author_ids",
+       "value": "<COORDINATOR_IDS>",
+       "type": "string"
+      },
+      {
+       "id": "a5",
+       "name": "scope_dn",
+       "value": "OU=AllUsers,OU=ORG,DC=example,DC=com",
+       "type": "string"
+      },
+      {
+       "id": "a6",
+       "name": "guest_domain",
+       "value": "guests.example.com",
+       "type": "string"
+      },
+      {
+       "id": "a7",
+       "name": "work_mail_domain",
+       "value": "example.com",
+       "type": "string"
+      },
+      {
+       "id": "a8",
+       "name": "codes_in_mail",
+       "value": 3,
+       "type": "number"
+      },
+      {
+       "id": "a9",
+       "name": "mail_from",
+       "value": "<MAIL_FROM>",
+       "type": "string"
+      },
+      {
+       "id": "a10",
+       "name": "resolved_status_id",
+       "value": "17",
+       "type": "string"
+      },
+      {
+       "id": "a11",
+       "name": "admins_group_id",
+       "value": "35",
+       "type": "string"
+      },
+      {
+       "id": "a12",
+       "name": "enforce_date",
+       "value": "2026-10-30",
+       "type": "string"
+      }
+     ]
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-base.set",
+   "typeVersion": 3.4,
+   "position": [
+    220,
+    0
+   ],
+   "id": "be863b3c-178e-42fc-b88c-1f4f51299de5",
+   "name": "Config"
+  },
+  {
+   "parameters": {
+    "resource": "row",
+    "operation": "get",
+    "dataTableId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "<AUDIT_TABLE>"
+    },
+    "returnAll": true,
+    "matchType": "anyCondition",
+    "filters": {}
+   },
+   "type": "n8n-nodes-base.dataTable",
+   "typeVersion": 1.1,
+   "position": [
+    440,
+    0
+   ],
+   "id": "0783d009-5556-44a7-a532-a0598be11d00",
+   "name": "[Data Table] Get Processed",
+   "alwaysOutputData": true
+  },
+  {
+   "parameters": {
+    "operation": "getAll",
+    "returnAll": true,
+    "filters": {
+     "project_id": "={{ $('Config').first().json.project_id }}",
+     "tracker_id": "={{ $('Config').first().json.tracker_id }}",
+     "status_id": "1"
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-redmine.redmine",
+   "typeVersion": 1,
+   "position": [
+    660,
+    0
+   ],
+   "id": "4236fbdd-179b-4603-8dea-87a1fdd651f1",
+   "name": "[Redmine] Get New Tickets",
+   "credentials": {
+    "redmineApi": {
+     "id": "<REDMINE_CRED>",
+     "name": "Redmine <ENV> account"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "jsCode": "const cfg = $('Config').first().json;\nconst dry = cfg.dry_run === true || cfg.dry_run === 'true';\nconst allowed = String(cfg.allowed_author_ids).split(',').map(s => s.trim()).filter(Boolean);\nconst seen = new Set($('[Data Table] Get Processed').all()\n  .filter(i => i.json.kind !== 'dispatch' && (dry || i.json.dry_run === false)).map(i => String(i.json.ticket_id)));\nconst work = '@' + String(cfg.work_mail_domain).toLowerCase();\nconst out = [];\nfor (const t of ($input.first().json.issues || [])) {\n  if (t.assigned_to || seen.has(String(t.id))) continue;\n  const text = `${t.subject}\\n${t.description || ''}`.toLowerCase();\n  // не просто «guest»: це слово трапляється в логінах (test.guest.N)\n  const isGuest = /(гостьов|guest acc|guest\\.google|google|гугл|gmail)/.test(text);\n  const isAccess = /(2fa|2-step|двоетап|двохетап|двоетап|двофактор|двухфакт|подвійн|backup|резервн|код|sign-in settings|верифікац|не може увійти|втрат\\S* доступ|відновлен\\S* доступ)/.test(text);\n  if (!(isGuest && isAccess) && !(t.ai && t.ai.type === 'guest_codes')) continue;\n  const base = { ticket_id: t.id, login: null, reason: '' };\n  const esc = reason => out.push({ ...base, kind: 'escalate', reason });\n  if (!allowed.includes(String(t.author && t.author.id))) { esc('автор задачі не входить до списку координаторів'); continue; }\n  // що просять: пароль, коди чи обидва (у заявках часто «скинути пароль та надіслати резервний код»)\n  const wantPassword = /(забу\\S* парол|forgot\\S* password|не пам'ята\\S* парол|скин\\S* парол|зміна парол|змінити парол|новий парол|reset\\S* password|парол)/.test(text);\n  const wantCodes = /(резервн|backup|код|code|двоетап|двохетап|двофактор|двухфакт|2fa|2-step|sign-in settings)/.test(text);\n  // логін AD: з гостьової адреси, з робочої пошти або з тексту «логін АД: x»\n  const logins = new Set();\n  for (const m of text.matchAll(/([a-z0-9][a-z0-9._-]*)_example\\.com@[\\w.-]+\\.guest\\.google/g)) logins.add(m[1]);\n  for (const m of text.matchAll(/([a-z0-9][a-z0-9._-]*)@([\\w.-]+)/g)) if ('@' + m[2] === work) logins.add(m[1]);\n  for (const m of text.matchAll(/лог[іi]н\\s*(?:ад|ad)?\\s*[:\\-–]\\s*([a-z0-9][a-z0-9._-]*[a-z0-9])/g)) logins.add(m[1]);\n  let L = [...logins].filter(x => /[._]/.test(x));\n  if (!L.length && t.ai) L = [...new Set((t.ai.logins || []).map(x => String(x).toLowerCase()).filter(x => /^[a-z0-9][a-z0-9._-]*[a-z0-9]$/.test(x) && /[._]/.test(x)))];\n  if (L.length !== 1) { esc(L.length ? `у заявці кілька облікових записів (${L.join(', ')})` : 'не знайшов у заявці логіну AD або робочої/гостьової адреси'); continue; }\n  base.login = L[0];\n  base.guest = `${L[0]}_example.com@${cfg.guest_domain}.guest.google`;\n  base.work_mail = L[0] + work;\n  out.push({ ...base, kind: 'access', want_password: wantPassword, want_codes: wantCodes || !wantPassword });\n}\n// Слоти для пошуку в AD (нода LDAP не приймає фільтр цілком із виразу): усі логіни, до 16, зайві = __none__\nconst SL = [...new Set(out.map(x => x.login).filter(Boolean))].map(x => String(x).replace(/[*()\\\\\\u0000]/g, '')).filter(Boolean).slice(0, 16);\nwhile (SL.length < 16) SL.push('__none__');\nif (out.length) out[0].slots = SL;\nreturn out.map(json => ({ json }));"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    880,
+    0
+   ],
+   "id": "98bd27d6-8a1d-4242-8ac5-4446b28ca23a",
+   "name": "Code: Parse Tickets"
+  },
+  {
+   "parameters": {
+    "baseDN": "DC=example,DC=com",
+    "searchFor": "custom",
+    "customFilter": "=(&(objectClass=user)(|(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[0] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[1] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[2] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[3] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[4] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[5] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[6] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[7] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[8] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[9] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[10] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[11] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[12] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[13] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[14] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[15] }})))",
+    "returnAll": true,
+    "options": {
+     "scope": "sub",
+     "attributes": [
+      "sAMAccountName",
+      "userAccountControl"
+     ]
+    }
+   },
+   "type": "n8n-nodes-base.ldap",
+   "typeVersion": 1,
+   "position": [
+    1320,
+    0
+   ],
+   "id": "2177afca-0fe9-4dd3-b2cc-f62f0e24f37e",
+   "name": "[AD] Search Users",
+   "credentials": {
+    "ldap": {
+     "id": "<LDAP_CRED>",
+     "name": "LDAP service account"
+    }
+   },
+   "executeOnce": true,
+   "alwaysOutputData": true
+  },
+  {
+   "parameters": {
+    "method": "GET",
+    "url": "={{ $json.guest ? 'https://admin.googleapis.com/admin/directory/v1/users/' + encodeURIComponent($json.guest) + '?projection=basic' : 'https://admin.googleapis.com/admin/directory/v1/users/none%40invalid' }}",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "googleApi",
+    "options": {
+     "response": {
+      "response": {
+       "fullResponse": true,
+       "neverError": true
+      }
+     }
+    }
+   },
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    1100,
+    0
+   ],
+   "id": "3442f384-388c-4a25-9480-bda146636ad0",
+   "name": "[Google] Get Guest",
+   "credentials": {
+    "googleApi": {
+     "id": "<GOOGLE_SA_CRED>",
+     "name": "Google service account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "jsCode": "const cfg = $('Config').first().json;\nconst dry = cfg.dry_run === true || cfg.dry_run === 'true';\nconst scope = ',' + String(cfg.scope_dn).toLowerCase();\nconst one = v => Array.isArray(v) ? v[0] : v;\nconst ad = $input.all().map(i => i.json).filter(j => j.sAMAccountName);\nconst tickets = $('Code: Parse Tickets').all();\nconst google = $('[Google] Get Guest').all();\nreturn tickets.map(({ json: t }, i) => {\n  const r = { ...t, dry_run: dry, action: 'escalate' };\n  const esc = reason => ({ json: { ...r, reason } });\n  if (t.kind === 'escalate') return { json: r };\n  const hits = ad.filter(u => String(one(u.sAMAccountName)).toLowerCase() === t.login);\n  if (hits.length !== 1) return esc(`логін ${t.login} не знайдено в AD`);\n  const u = hits[0];\n  if (!String(u.dn).toLowerCase().endsWith(scope)) return esc('обліковий запис AD поза дозволеним OU (можливо, звільнений)');\n  if ((parseInt(one(u.userAccountControl), 10) || 0) & 2) return esc('обліковий запис AD вимкнено');\n  const g = google[i] && google[i].json || {};\n  const b = g.body || {};\n  if (g.statusCode !== 200 || !b.primaryEmail) return esc(`гостьовий акаунт ${t.guest} не знайдено в Google (код ${g.statusCode})`);\n  if (!b.isGuestUser) return esc('це не гостьовий акаунт Google');\n  if (b.isAdmin || b.isDelegatedAdmin) return esc('акаунт Google має права адміністратора');\n  if (b.suspended) return esc('гостьовий акаунт Google призупинено');\n  const owner = String((b.guestAccountInfo || {}).primaryGuestEmail || '').toLowerCase();\n  if (owner !== t.work_mail) return esc(`гостьовий акаунт прив'язано до іншої адреси (${owner || 'невідомо'})`);\n  // стан 2FA: льготний період Google = 7 днів від першого входу; після дати примусового впровадження блокуються всі без 2FA\n  const enrolled = !!b.isEnrolledIn2Sv;\n  const last = String(b.lastLoginTime || '');\n  const never = !last || last.startsWith('1970');\n  const days = never ? null : (Date.now() - Date.parse(last)) / 86400000;\n  const pastEnforce = Date.now() >= Date.parse(String(cfg.enforce_date));\n  const blocked = !enrolled && !never && (pastEnforce || days >= 7);\n  Object.assign(r, { enrolled_2sv: enrolled, never_logged_in: never, blocked });\n  if (enrolled && !t.want_password) return esc('у гостя вже налаштована 2FA, резервні коди не потрібні (ймовірно, потрібен новий пароль)');\n  if (never && !t.want_password) return esc('гість ще ні разу не входив: резервні коди не потрібні, спершу має зареєструватись за запрошенням');\n  if (t.want_password) {\n    // пароль — це повний вхід в акаунт: лише через підтвердження; якщо акаунт заблоковано 2FA, додаємо коди\n    r.action = 'request_approval';\n    r.set_password = true;\n    r.send_codes = !enrolled && (blocked || t.want_codes);\n    return { json: r };\n  }\n  r.action = 'codes';\n  return { json: r };\n});"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1540,
+    0
+   ],
+   "id": "7e5a198c-d7ea-4455-abd1-8e25a42cc7d8",
+   "name": "Code: Decide Guest Action"
+  },
+  {
+   "parameters": {
+    "conditions": {
+     "options": {
+      "caseSensitive": true,
+      "leftValue": "",
+      "typeValidation": "strict",
+      "version": 2
+     },
+     "conditions": [
+      {
+       "id": "c",
+       "leftValue": "={{ $json.action === 'codes' && !$json.dry_run }}",
+       "rightValue": "",
+       "operator": {
+        "type": "boolean",
+        "operation": "true",
+        "singleValue": true
+       }
+      }
+     ],
+     "combinator": "and"
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.2,
+   "position": [
+    1760,
+    0
+   ],
+   "id": "9ee6dee2-cd62-4c3c-ac16-326489ee56dc",
+   "name": "Issue Codes Now?"
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "=https://admin.googleapis.com/admin/directory/v1/users/{{ encodeURIComponent($json.guest) }}/verificationCodes/generate",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "googleApi",
+    "options": {}
+   },
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    1980,
+    -200
+   ],
+   "id": "e309ddfb-cdc5-4b47-92c9-a4155aa75ac9",
+   "name": "[Google] Generate Codes",
+   "credentials": {
+    "googleApi": {
+     "id": "<GOOGLE_SA_CRED>",
+     "name": "Google service account"
+    }
+   },
+   "onError": "continueErrorOutput"
+  },
+  {
+   "parameters": {
+    "method": "GET",
+    "url": "=https://admin.googleapis.com/admin/directory/v1/users/{{ encodeURIComponent($('Code: Decide Guest Action').item.json.guest) }}/verificationCodes",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "googleApi",
+    "options": {
+     "response": {
+      "response": {
+       "fullResponse": true,
+       "neverError": true
+      }
+     }
+    }
+   },
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    2200,
+    -200
+   ],
+   "id": "070c4608-c5fa-47b1-971e-2d77f803ec79",
+   "name": "[Google] List Codes",
+   "credentials": {
+    "googleApi": {
+     "id": "<GOOGLE_SA_CRED>",
+     "name": "Google service account"
+    }
+   },
+   "onError": "continueErrorOutput"
+  },
+  {
+   "parameters": {
+    "mode": "runOnceForEachItem",
+    "jsCode": "// Збирає лист з N кодами. Коди лишаються лише в цьому вузлі й у листі.\nconst cfg = $('Config').first().json;\nconst d = $('Code: Decide Guest Action').item.json;\nconst items = (($json.body || {}).items || []).map(x => x.verificationCode).filter(Boolean);\nconst n = Number(cfg.codes_in_mail);\nif (items.length < n) return { json: { ok: false, error: `Google повернув ${items.length} кодів` } };\nconst codes = items.slice(0, n);\nconst text = [\n  'Hello! / Вітаємо!',\n  '',\n  'Here are backup codes to sign in to your Google guest account (Google Chat).',\n  'Нижче резервні коди для входу в гостьовий акаунт Google (Google Chat).',\n  '',\n  `Account / Акаунт: ${d.guest}`,\n  'Sign in with this full address and your password. When Google asks for 2-Step Verification, choose \"Try another way\" -> \"Enter a backup code\".',\n  'Увійдіть під цією повною адресою та своїм паролем. Коли Google попросить другий крок, оберіть «Інший спосіб» -> «Резервний код».',\n  '',\n  ...codes.map((c, k) => `${k + 1}. ${c}`),\n  '',\n  'Each code works once. Right after signing in, set up 2-Step Verification, otherwise you will be locked out again.',\n  'Кожен код діє один раз. Одразу після входу налаштуйте двоетапну перевірку, інакше доступ знову заблокується.',\n  '',\n  'IT support / IT підтримка',\n].join('\\n');\nreturn { json: { ok: true, to: d.work_mail, subject: 'Google guest account: backup codes / резервні коди', text } };"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    2420,
+    -200
+   ],
+   "id": "84696a30-0220-4f4b-9291-ae74612dfc46",
+   "name": "Code: Build Mail"
+  },
+  {
+   "parameters": {
+    "conditions": {
+     "options": {
+      "caseSensitive": true,
+      "leftValue": "",
+      "typeValidation": "strict",
+      "version": 2
+     },
+     "conditions": [
+      {
+       "id": "c",
+       "leftValue": "={{ $json.ok === true }}",
+       "rightValue": "",
+       "operator": {
+        "type": "boolean",
+        "operation": "true",
+        "singleValue": true
+       }
+      }
+     ],
+     "combinator": "and"
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.2,
+   "position": [
+    2640,
+    -200
+   ],
+   "id": "2b2902df-e884-468e-8e60-f16ac0338279",
+   "name": "Mail Ready?"
+  },
+  {
+   "parameters": {
+    "fromEmail": "={{ $('Config').first().json.mail_from }}",
+    "toEmail": "={{ $json.to }}",
+    "subject": "={{ $json.subject }}",
+    "emailFormat": "text",
+    "text": "={{ $json.text }}",
+    "options": {
+     "appendAttribution": false
+    }
+   },
+   "type": "n8n-nodes-base.emailSend",
+   "typeVersion": 2.1,
+   "position": [
+    2860,
+    -300
+   ],
+   "id": "c62d2f26-342b-4fda-9e4c-35efbab30c40",
+   "name": "[Mail] Send Codes",
+   "credentials": {
+    "smtp": {
+     "id": "<SMTP_CRED>",
+     "name": "IT mailbox SMTP"
+    }
+   },
+   "onError": "continueErrorOutput"
+  },
+  {
+   "parameters": {
+    "mode": "raw",
+    "jsonOutput": "={{ JSON.stringify({ ...$('Code: Decide Guest Action').item.json, done: 'yes', error: '' }) }}",
+    "options": {}
+   },
+   "type": "n8n-nodes-base.set",
+   "typeVersion": 3.4,
+   "position": [
+    3080,
+    -340
+   ],
+   "id": "8b21ae7b-d610-420f-991f-19b86899e2a0",
+   "name": "Mark Done"
+  },
+  {
+   "parameters": {
+    "mode": "raw",
+    "jsonOutput": "={{ JSON.stringify({ ...$('Code: Decide Guest Action').item.json, done: 'no', error: String($json.error && ($json.error.message || $json.error) || 'невідома помилка') }) }}",
+    "options": {}
+   },
+   "type": "n8n-nodes-base.set",
+   "typeVersion": 3.4,
+   "position": [
+    3080,
+    -160
+   ],
+   "id": "b0e32c9e-1b58-4de5-8829-2a12d3034d01",
+   "name": "Mark Failed"
+  },
+  {
+   "parameters": {
+    "numberInputs": 3
+   },
+   "type": "n8n-nodes-base.merge",
+   "typeVersion": 3.2,
+   "position": [
+    3300,
+    0
+   ],
+   "id": "90c60da4-b696-469f-8375-b17ec52ebcb7",
+   "name": "Merge Results"
+  },
+  {
+   "parameters": {
+    "jsCode": "return $input.all().map(({ json: j }) => {\n  let note, kind = j.action, close = false, assign = false, details = j.reason || '';\n  const failed = j.done === 'no';\n  let approval = false, payload = '';\n  if (j.action === 'request_approval') {\n    kind = 'guest_access'; assign = true; approval = true;\n    payload = JSON.stringify({ login: j.login, guest: j.guest, work_mail: j.work_mail, set_password: true, send_codes: !!j.send_codes });\n    details = j.send_codes ? 'тимчасовий пароль + резервні коди' : 'тимчасовий пароль';\n    note = `Агент підготував видачу доступу до гостьового акаунту ${j.guest}: ${details} (листи підуть на ${j.work_mail}).`\n      + (j.blocked ? ' Акаунт заблоковано через відсутність 2FA, тому потрібні й пароль, і коди.' : '')\n      + ' Щоб виконати, учасник «IT Адміни» пише в задачі коментар «Погоджую». Через 7 днів без підтвердження дію скасовано.';\n  } else if (j.action === 'codes' && !failed) {\n    close = true;\n    details = `коди надіслано на ${j.work_mail}`;\n    note = `Вітаю. Лист із резервними кодами для входу в гостьовий акаунт Google надіслано на робочу пошту ${j.work_mail}. Після входу ГА потрібно одразу налаштувати двоетапну перевірку.`;\n  } else {\n    kind = 'escalate'; assign = true;\n    if (failed) details = `помилка під час видачі кодів: ${j.error}`;\n    note = `Агент: автоматично не обробляю. Причина: ${details}. Передано адміністраторам.`;\n  }\n  if (j.dry_run) {\n    note = `DRY RUN (змін не внесено). Агент ${j.action === 'codes' ? 'згенерував би резервні коди для ' + j.guest + ' і надіслав би на ' + j.work_mail\n      : j.action === 'request_approval' ? 'підготував би видачу доступу до ' + j.guest + ' (' + details + ') і чекав би «Погоджую»' : 'передав би задачу адміністраторам. Причина: ' + details}.`;\n    close = false; assign = false;  // approval лишається: сухий рядок awaiting_approval дозволяє флоу Apply показати «виконав би»\n  }\n  return { json: { ticket_id: j.ticket_id, kind, note, private: j.dry_run || kind !== 'codes', close, assign,\n                   logins: j.login || '', outcome: approval ? 'awaiting_approval' : kind, details, payload, dry_run: j.dry_run,\n                   at: new Date().toISOString() } };\n});"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    3520,
+    0
+   ],
+   "id": "7e051ff1-7cb2-4f48-bbc3-a2d6547403af",
+   "name": "Code: Build Report"
+  },
+  {
+   "parameters": {
+    "operation": "update",
+    "issueId": "={{ $json.ticket_id }}",
+    "notes": "={{ $json.note }}",
+    "private_notes": "={{ $json.private }}",
+    "additionalFields": {
+     "status_id": "={{ $json.close ? $('Config').first().json.resolved_status_id : undefined }}",
+     "assigned_to_id": "={{ $json.assign ? $('Config').first().json.admins_group_id : undefined }}"
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-redmine.redmine",
+   "typeVersion": 1,
+   "position": [
+    3740,
+    0
+   ],
+   "id": "6aa6958e-31f9-46ea-9cfb-073431d72314",
+   "name": "[Redmine] Update Ticket",
+   "credentials": {
+    "redmineApi": {
+     "id": "<REDMINE_CRED>",
+     "name": "Redmine <ENV> account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "resource": "row",
+    "operation": "insert",
+    "dataTableId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "<AUDIT_TABLE>"
+    },
+    "columns": {
+     "mappingMode": "defineBelow",
+     "matchingColumns": [],
+     "value": {
+      "ticket_id": "={{ $('Code: Build Report').item.json.ticket_id }}",
+      "kind": "={{ $('Code: Build Report').item.json.kind }}",
+      "logins": "={{ $('Code: Build Report').item.json.logins }}",
+      "outcome": "={{ $('Code: Build Report').item.json.outcome }}",
+      "dry_run": "={{ $('Code: Build Report').item.json.dry_run }}",
+      "details": "={{ $('Code: Build Report').item.json.details }}",
+      "at": "={{ $('Code: Build Report').item.json.at }}",
+      "payload": "={{ $('Code: Build Report').item.json.payload }}"
+     },
+     "schema": [
+      {
+       "id": "ticket_id",
+       "displayName": "ticket_id",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "number",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "kind",
+       "displayName": "kind",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "logins",
+       "displayName": "logins",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "outcome",
+       "displayName": "outcome",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "dry_run",
+       "displayName": "dry_run",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "boolean",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "details",
+       "displayName": "details",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "at",
+       "displayName": "at",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "payload",
+       "displayName": "payload",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      }
+     ]
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-base.dataTable",
+   "typeVersion": 1.1,
+   "position": [
+    3960,
+    0
+   ],
+   "id": "b0174566-c2ea-4502-bd64-c9baeb1bd7df",
+   "name": "[Data Table] Log Result"
+  }
+ ],
+ "connections": {
+  "Every 5 Min": {
+   "main": [
+    [
+     {
+      "node": "Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Config": {
+   "main": [
+    [
+     {
+      "node": "[Data Table] Get Processed",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Data Table] Get Processed": {
+   "main": [
+    [
+     {
+      "node": "[Redmine] Get New Tickets",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Redmine] Get New Tickets": {
+   "main": [
+    [
+     {
+      "node": "Code: Parse Tickets",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Code: Parse Tickets": {
+   "main": [
+    [
+     {
+      "node": "[Google] Get Guest",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Google] Get Guest": {
+   "main": [
+    [
+     {
+      "node": "[AD] Search Users",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[AD] Search Users": {
+   "main": [
+    [
+     {
+      "node": "Code: Decide Guest Action",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Code: Decide Guest Action": {
+   "main": [
+    [
+     {
+      "node": "Issue Codes Now?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Google] Generate Codes": {
+   "main": [
+    [
+     {
+      "node": "[Google] List Codes",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Mark Failed",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Google] List Codes": {
+   "main": [
+    [
+     {
+      "node": "Code: Build Mail",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Mark Failed",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Code: Build Mail": {
+   "main": [
+    [
+     {
+      "node": "Mail Ready?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Mail] Send Codes": {
+   "main": [
+    [
+     {
+      "node": "Mark Done",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Mark Failed",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Merge Results": {
+   "main": [
+    [
+     {
+      "node": "Code: Build Report",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Code: Build Report": {
+   "main": [
+    [
+     {
+      "node": "[Redmine] Update Ticket",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Redmine] Update Ticket": {
+   "main": [
+    [
+     {
+      "node": "[Data Table] Log Result",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Issue Codes Now?": {
+   "main": [
+    [
+     {
+      "node": "[Google] Generate Codes",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Merge Results",
+      "type": "main",
+      "index": 2
+     }
+    ]
+   ]
+  },
+  "Mail Ready?": {
+   "main": [
+    [
+     {
+      "node": "[Mail] Send Codes",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Mark Failed",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Mark Done": {
+   "main": [
+    [
+     {
+      "node": "Merge Results",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Mark Failed": {
+   "main": [
+    [
+     {
+      "node": "Merge Results",
+      "type": "main",
+      "index": 1
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1",
+  "saveDataSuccessExecution": "none",
+  "saveDataErrorExecution": "none",
+  "saveManualExecutions": false,
+  "saveExecutionProgress": false
+ }
+}

@@ -1,0 +1,7 @@
+tools/local_settings.json
+tools/coordinators.txt
+__pycache__/
+*.pyc
+*.key
+*key*.txt
+.env
