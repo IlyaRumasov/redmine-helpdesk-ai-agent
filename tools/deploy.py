@@ -40,6 +40,8 @@ def drop_missing_smtp(wf):
 
 def upsert(wf, existing):
     body = {k: wf[k] for k in ("name", "nodes", "connections", "settings")}
+    if S.get("error_workflow_id"):  # помилки будь-якого флоу йдуть у [System] Global Error Handler (заявка в Redmine)
+        body["settings"] = {**body["settings"], "errorWorkflow": S["error_workflow_id"]}
     if wf["name"] in existing:
         w = existing[wf["name"]]
         if w.get("active"):

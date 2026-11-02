@@ -47,5 +47,6 @@
   "id": "<ID>",
   "name": "<NAME>"
  },
- "mail_from": "<SENDER_ADDRESS>"
+ "mail_from": "<SENDER_ADDRESS>",
+ "error_workflow_id": "<ERROR_WORKFLOW_ID>"
 }

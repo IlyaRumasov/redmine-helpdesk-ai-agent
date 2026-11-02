@@ -21,7 +21,9 @@ RULES_JS = r"""
 const seen = new Set($('[Data Table] Get Processed').all().map(i => String(i.json.ticket_id)).filter(Boolean));
 // заявки авторів поза списком координаторів не чіпаємо взагалі (їхній текст не йде ні в інструменти, ні в ІІ)
 const allowed = String($('Config').first().json.allowed_author_ids).split(',').map(s => s.trim()).filter(Boolean);
-const tickets = ($input.first().json.issues || []).filter(t => !t.assigned_to && !seen.has(String(t.id))
+// нова заявка в Redmine одразу призначена групі «IT Адміни» (admins_group_id): вважаємо її нерозподіленою, поки не взяв інженер
+const adminsGroup = String($('Config').first().json.admins_group_id);
+const tickets = ($input.first().json.issues || []).filter(t => (!t.assigned_to || String(t.assigned_to.id) === adminsGroup) && !seen.has(String(t.id))
   && allowed.includes(String(t.author && t.author.id)));
 const known = [], unknown = [];
 for (const t of tickets) {
@@ -120,18 +122,19 @@ def build(rm_id, rm_name, gem_id, gem_name, table_id, unlock_id, ad_id, guest_id
         "3. Передає заявки інструментам (під-воркфлоу) з підказкою ai; кожен інструмент сам перевіряє AD/Redmine/Google і веде аудит.\n"
         "«other» пишеться в аудит, щоб ІІ не класифікував її вдруге; таку заявку беруть люди.\n"
         "Флоу «Apply Approved Changes» працює окремо за розкладом."), "height": 230, "width": 640}, -200, -320)
-    node("Every 5 Min", "n8n-nodes-base.scheduleTrigger", {"rule": {"interval": [{"field": "minutes", "minutesInterval": 5}]}}, 0, 0, ver=1.2)
+    node("Every 2 Min", "n8n-nodes-base.scheduleTrigger", {"rule": {"interval": [{"field": "minutes", "minutesInterval": 2}]}}, 0, 0, ver=1.2)
     node("Config", "n8n-nodes-base.set", {"assignments": {"assignments": [
         {"id": "a1", "name": "project_id", "value": "<PROJECT_ID>", "type": "string"},
         {"id": "a2", "name": "tracker_id", "value": "<TRACKER_ID>", "type": "string"},
         {"id": "a3", "name": "tool_unlock_id", "value": unlock_id, "type": "string"},
         {"id": "a4", "name": "tool_ad_id", "value": ad_id, "type": "string"},
         {"id": "a5", "name": "tool_guest_id", "value": guest_id, "type": "string"},
-        {"id": "a6", "name": "allowed_author_ids", "value": "<COORDINATOR_IDS>", "type": "string"}]}, "options": {}}, 220, 0, ver=3.4)
+        {"id": "a6", "name": "allowed_author_ids", "value": "<COORDINATOR_IDS>", "type": "string"},
+        {"id": "a7", "name": "admins_group_id", "value": "35", "type": "string"}]}, "options": {}}, 220, 0, ver=3.4)
     node("[Data Table] Get Processed", "n8n-nodes-base.dataTable", {"resource": "row", "operation": "get", "dataTableId": table,
          "returnAll": True, "matchType": "anyCondition", "filters": {}}, 440, 0, ver=1.1, alwaysOutputData=True)
     node("[Redmine] Get New Tickets", "n8n-nodes-redmine.redmine", {"operation": "getAll", "returnAll": True, "filters": {
-         "project_id": cfgv("project_id"), "tracker_id": cfgv("tracker_id"), "status_id": "1"}, "options": {}}, 660, 0, credentials=rmc)
+         "project_id": cfgv("project_id"), "tracker_id": cfgv("tracker_id"), "status_id": "1"}, "options": {}}, 660, 0, credentials=rmc, executeOnce=True)
     node("Code: Rules Classify", "n8n-nodes-base.code", {"jsCode": RULES_JS.strip()}, 880, 0, ver=2)
     node("Need AI?", "n8n-nodes-base.if", {**cond("c1", "={{ $json.unknown.length > 0 }}"), "options": {}}, 1100, 0, ver=2.2)
     node("AI: Classify Tickets", "@n8n/n8n-nodes-langchain.chainLlm", {"promptType": "define", "text": "=" + PROMPT + "{{ $json.prompt_batch }}",
@@ -156,7 +159,7 @@ def build(rm_id, rm_name, gem_id, gem_name, table_id, unlock_id, ad_id, guest_id
         "schema": [{"id": c, "displayName": c, "required": False, "defaultMatch": False, "display": True, "type": t, "canBeUsedToMatch": True} for c, t in cols]},
         "options": {}}, 2200, 300, ver=1.1)
 
-    for a, b in [("Every 5 Min", "Config"), ("Config", "[Data Table] Get Processed"), ("[Data Table] Get Processed", "[Redmine] Get New Tickets"),
+    for a, b in [("Every 2 Min", "Config"), ("Config", "[Data Table] Get Processed"), ("[Data Table] Get Processed", "[Redmine] Get New Tickets"),
                  ("[Redmine] Get New Tickets", "Code: Rules Classify"), ("Code: Rules Classify", "Need AI?"),
                  ("AI: Classify Tickets", "Code: Apply AI"), ("Code: Apply AI", "Code: Route Tickets"), ("Code: Route Tickets", "Route by Tool")]:
         link(a, b)

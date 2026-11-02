@@ -23,7 +23,8 @@ const seen = new Set($('[Data Table] Get Processed').all()
 const work = '@' + String(cfg.work_mail_domain).toLowerCase();
 const out = [];
 for (const t of ($input.first().json.issues || [])) {
-  if (t.assigned_to || seen.has(String(t.id))) continue;
+  // група «IT Адміни» (admins_group_id) = виконавець за замовчуванням, заявка ще нерозподілена
+  if ((t.assigned_to && String(t.assigned_to.id) !== String(cfg.admins_group_id)) || seen.has(String(t.id))) continue;
   const text = `${t.subject}\n${t.description || ''}`.toLowerCase();
   // не просто «guest»: це слово трапляється в логінах (test.guest.N)
   const isGuest = /(гостьов|guest acc|guest\.google|google|гугл|gmail)/.test(text);
