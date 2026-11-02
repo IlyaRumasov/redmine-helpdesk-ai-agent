@@ -1,0 +1,178 @@
+{
+ "name": "[PILOT] Advisor Tool: AD User Status",
+ "nodes": [
+  {
+   "parameters": {
+    "workflowInputs": {
+     "values": [
+      {
+       "name": "login"
+      }
+     ]
+    }
+   },
+   "type": "n8n-nodes-base.executeWorkflowTrigger",
+   "typeVersion": 1.2,
+   "position": [
+    0,
+    0
+   ],
+   "id": "308f0246-ab5e-4717-8ac9-31ad4c7e8cdd",
+   "name": "When Called by Agent"
+  },
+  {
+   "parameters": {
+    "assignments": {
+     "assignments": [
+      {
+       "id": "a0",
+       "name": "scope_dn",
+       "value": "OU=AllUsers,OU=ORG,DC=example,DC=com",
+       "type": "string"
+      },
+      {
+       "id": "a1",
+       "name": "protected_groups",
+       "value": "Domain Admins,Enterprise Admins,Administrators,Schema Admins",
+       "type": "string"
+      }
+     ]
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-base.set",
+   "typeVersion": 3.4,
+   "position": [
+    220,
+    0
+   ],
+   "id": "edb2c2d6-5394-4d7c-8298-4dab71dbb518",
+   "name": "Config"
+  },
+  {
+   "parameters": {
+    "jsCode": "const l = String($('When Called by Agent').first().json.login || '').trim().toLowerCase();\nreturn [{ json: { login: /^[a-z0-9][a-z0-9._-]{1,40}$/.test(l) ? l : '__none__' } }];"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    440,
+    0
+   ],
+   "id": "3da6b26e-be6e-4e55-a755-fa26b61d56cd",
+   "name": "Code: Validate"
+  },
+  {
+   "parameters": {
+    "baseDN": "DC=example,DC=com",
+    "searchFor": "custom",
+    "customFilter": "=(&(objectClass=user)(sAMAccountName={{ $json.login }}))",
+    "returnAll": true,
+    "options": {
+     "scope": "sub",
+     "attributes": [
+      "sAMAccountName",
+      "userAccountControl",
+      "lockoutTime",
+      "whenCreated",
+      "lastLogonTimestamp",
+      "memberOf",
+      "postOfficeBox"
+     ]
+    }
+   },
+   "type": "n8n-nodes-base.ldap",
+   "typeVersion": 1,
+   "position": [
+    660,
+    0
+   ],
+   "id": "fb020b3c-24df-405a-a038-6bcf0d90d5f4",
+   "name": "[AD] Search User",
+   "credentials": {
+    "ldap": {
+     "id": "<ID>",
+     "name": "<NAME>"
+    }
+   },
+   "alwaysOutputData": true
+  },
+  {
+   "parameters": {
+    "jsCode": "const cfg = $('Config').first().json;\nconst login = $('Code: Validate').first().json.login;\nconst one = v => Array.isArray(v) ? v[0] : v;\nconst u = $input.all().map(i => i.json).find(j => j.sAMAccountName && String(one(j.sAMAccountName)).toLowerCase() === login);\nif (login === '__none__') return [{ json: { ok: false, error: 'некоректний формат логіна' } }];\nif (!u) return [{ json: { ok: true, found: false } }];\nconst dn = String(u.dn || '');\nconst scope = ',' + String(cfg.scope_dn).toLowerCase();\nconst prot = String(cfg.protected_groups).toLowerCase().split(',').map(s => s.trim()).filter(Boolean);\nconst groups = [].concat(u.memberOf || []).map(g => String(g).toLowerCase());\nif (!dn.toLowerCase().endsWith(scope) || groups.some(g => prot.some(p => g.startsWith('cn=' + p + ',')))) {\n  return [{ json: { ok: true, found: true, restricted: true, note: 'обліковий запис поза дозволеною зоною або привілейований: подробиці не показуємо' } }];\n}\nconst uac = parseInt(one(u.userAccountControl), 10) || 0;\nconst day = s => { const m = String(s || '').match(/^(\\d{4})(\\d{2})(\\d{2})/); return m ? `${m[1]}-${m[2]}-${m[3]}` : ''; };\nconst ft = v => { const n = Number(one(v)); return n > 0 ? new Date(n / 10000 - 11644473600000).toISOString().slice(0, 10) : ''; };\nconst ou = dn.split(',').filter(p => /^ou=/i.test(p)).map(p => p.slice(3)).reverse().join(' / ');\nreturn [{ json: { ok: true, found: true, restricted: false, enabled: !(uac & 2), locked: (Number(one(u.lockoutTime)) || 0) > 0,\n  ou, created: day(one(u.whenCreated)), last_logon: ft(u.lastLogonTimestamp), personal_mail_set: !!String(one(u.postOfficeBox) || '').trim() } }];"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    880,
+    0
+   ],
+   "id": "6cc5ec93-d995-4198-8182-784e38970f51",
+   "name": "Code: Result"
+  },
+  {
+   "parameters": {
+    "content": "## Advisor Tool: AD User Status\nЛише пошук за точним логіном. Видає: увімкнено, заблоковано, OU, дати створення й останнього входу, чи заповнена особиста пошта (так/ні). Групи, паролі й адреси не повертаються; поза дозволеним OU або в привілейованій групі повертається лише «restricted».",
+    "height": 160,
+    "width": 520
+   },
+   "type": "n8n-nodes-base.stickyNote",
+   "typeVersion": 1,
+   "position": [
+    -60,
+    -260
+   ],
+   "id": "36080304-0db1-46c8-8143-5dc9c7ec8161",
+   "name": "Sticky Note"
+  }
+ ],
+ "connections": {
+  "When Called by Agent": {
+   "main": [
+    [
+     {
+      "node": "Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Config": {
+   "main": [
+    [
+     {
+      "node": "Code: Validate",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Code: Validate": {
+   "main": [
+    [
+     {
+      "node": "[AD] Search User",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[AD] Search User": {
+   "main": [
+    [
+     {
+      "node": "Code: Result",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1"
+ }
+}

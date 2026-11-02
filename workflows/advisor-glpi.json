@@ -1,0 +1,232 @@
+{
+ "name": "[PILOT] Advisor Tool: GLPI Equipment",
+ "nodes": [
+  {
+   "parameters": {
+    "workflowInputs": {
+     "values": [
+      {
+       "name": "login"
+      }
+     ]
+    }
+   },
+   "type": "n8n-nodes-base.executeWorkflowTrigger",
+   "typeVersion": 1.2,
+   "position": [
+    0,
+    0
+   ],
+   "id": "341df2f6-3c64-4782-9277-ffb9489d3d89",
+   "name": "When Called by Agent"
+  },
+  {
+   "parameters": {
+    "jsCode": "// ===== GLPI (облік техніки): пошук людини і її техніки. Збірка вставляє цей код у Code-ноди замість рядка «// @@glpi». =====\n// Хто людина в GLPI: користувач, у якого логін = логін AD, або прізвище й ім'я з заявки (латиницею чи кирилицею, обидва порядки).\n// Техніка людини: позиції, де поле «Користувач» = цей користувач. Поле «Контакт» (вільний текст: логін@ПК або ПІБ)\n// лише підказка: такі позиції показуємо як «можливо», але самі по собі вони нічого не підтверджують.\n// Пошук GLPI за «містить» знаходить і схожі логіни (a.ivanov -> a.ivanova), тому точний збіг перевіряємо тут.\nconst GLPI_URL = '<GLPI_URL>/apirest.php';\nconst glpiNorm = s => String(s || '').replace(/<[^>]*>/g, '').replace(/[’ʼ`]/g, \"'\").replace(/\\s+/g, ' ').trim().toLowerCase();\n\n// Пари [ім'я, прізвище] для пошуку: з готових латинських пар і з сирих рядків заявки (обидва порядки; для 3+ слів ще перше+останнє).\nfunction glpiPairs(names, pairs) {\n  const out = [];\n  const add = (g, s) => { g = glpiNorm(g); s = glpiNorm(s); if (g && s && !out.some(p => p[0] === g && p[1] === s)) out.push([g, s]); };\n  for (const [g, s] of pairs || []) add(g, s);\n  for (const raw of names || []) {\n    const w = String(raw || '').replace(/^(ФОП|ФЛП)\\s+/i, '').split(/[\\s\\/|,]+/).filter(x => /^[\\p{L}'’ʼ-]{2,}$/u.test(x));\n    if (w.length < 2) continue;\n    add(w[0], w[1]); add(w[1], w[0]);\n    if (w.length >= 3) { add(w[0], w[w.length - 1]); add(w[w.length - 1], w[0]); }\n  }\n  return out.slice(0, 8);\n}\n\n// Два запити: користувачі GLPI (логін або прізвище+ім'я) і техніка (поле «Користувач» або «Контакт» містить логін чи слово з ПІБ).\nfunction glpiUrls(login, names, pairs) {\n  const P = glpiPairs(names, pairs), e = encodeURIComponent;\n  const c = [];\n  const crit = (i, f, v, link) => (link ? `&criteria[${i}][link]=${link}` : '') +\n    `&criteria[${i}][field]=${f}&criteria[${i}][searchtype]=contains&criteria[${i}][value]=${e(v)}`;\n  let i = 0;\n  if (login) c.push(crit(i++, 1, `^${login}$`));\n  for (const [g, s] of P) {\n    c.push(`${i ? `&criteria[${i}][link]=OR` : ''}&criteria[${i}][criteria][0][field]=34&criteria[${i}][criteria][0][searchtype]=contains` +\n      `&criteria[${i}][criteria][0][value]=${e('^' + s + '$')}&criteria[${i}][criteria][1][link]=AND&criteria[${i}][criteria][1][field]=9` +\n      `&criteria[${i}][criteria][1][searchtype]=contains&criteria[${i}][criteria][1][value]=${e('^' + g + '$')}`);\n    i++;\n  }\n  const words = [...new Set([login, ...P.flat()].filter(w => w && w.length >= 3))];\n  const a = [];\n  let j = 0;\n  for (const w of words) { a.push(crit(j, 70, w, j ? 'OR' : '')); j++; a.push(crit(j, 7, w, 'OR')); j++; }\n  return {\n    user_url: c.length ? `${GLPI_URL}/search/User?${c.join('').slice(1)}&forcedisplay[0]=1&forcedisplay[1]=2&forcedisplay[2]=9&forcedisplay[3]=34&uid_cols=true&range=0-50` : '',\n    assets_url: a.length ? `${GLPI_URL}/search/AllAssets?${a.join('').slice(1)}&forcedisplay[0]=1&forcedisplay[1]=5&forcedisplay[2]=6&forcedisplay[3]=7` +\n      '&forcedisplay[4]=23&forcedisplay[5]=31&forcedisplay[6]=70&uid_cols=true&range=0-500' : '',\n  };\n}\n\n// Результат: status = assigned | clear | check | not_in_glpi | ambiguous | error; items (за користувачем), possible (лише «Контакт»).\nfunction glpiCheck(login, names, pairs, session, users, assets) {\n  const P = glpiPairs(names, pairs), L = glpiNorm(login);\n  const bad = r => !r || Number(r.statusCode) !== 200 || !r.body;\n  const why = r => `${(r && r.statusCode) || 'немає відповіді'}${r && r.body ? ': ' + String(JSON.stringify(r.body)).slice(0, 120) : ''}`;\n  if (bad(session)) return { status: 'error', error: 'вхід у GLPI ' + why(session), items: [], possible: [] };\n  if (bad(users) || bad(assets)) return { status: 'error', error: 'пошук у GLPI ' + why(bad(users) ? users : assets), items: [], possible: [] };\n  const val = (r, k) => glpiNorm(r[k]);\n  const found = (users.body.data || []).filter(u => (L && val(u, 'User.name') === L) ||\n    P.some(([g, s]) => val(u, 'User.realname') === s && val(u, 'User.firstname') === g));\n  const logins = [...new Set(found.map(u => val(u, 'User.name')))];\n  const TYPES = { Computer: \"Комп'ютер\", Monitor: 'Монітор', Peripheral: 'Периферія', Printer: 'Принтер', Phone: 'Телефон', NetworkEquipment: 'Мережеве обладнання' };\n  const line = r => {\n    const f = (k, label) => { const v = String(r[k] || '').replace(/<[^>]*>/g, '').trim(); return v ? `${label}${v}` : ''; };\n    return [`${TYPES[r.itemtype] || r.itemtype} «${String(r['AllAssets..name'] || 'без назви').replace(/<[^>]*>/g, '').trim()}»`,\n      f('AllAssets..otherserial', 'інв. № '), f('AllAssets..serial', 'сер. № '), f('AllAssets.Manufacturer.name', ''),\n      f('AllAssets.State.completename', 'статус: '), f('AllAssets..contact', 'контакт: ')].filter(Boolean).join(', ');\n  };\n  const rows = assets.body.data || [];\n  const owner = r => String(r['AllAssets.User.name'] || '').split('$#$').map(glpiNorm);\n  const items = rows.filter(r => owner(r).some(o => logins.includes(o))).map(line);\n  const tokens = r => glpiNorm(r['AllAssets..contact']).split(/[\\s@\\\\\\/,;()]+/).filter(Boolean);\n  const possible = rows.filter(r => !owner(r).some(o => logins.includes(o)))\n    .filter(r => { const t = tokens(r); return (L && t.includes(L)) || P.some(([g, s]) => t.includes(g) && t.includes(s)); }).map(line);\n  const status = logins.length > 1 ? 'ambiguous' : items.length ? 'assigned' : !logins.length ? 'not_in_glpi' : possible.length ? 'check' : 'clear';\n  return { status, glpi_login: logins.join(', '), items: items.slice(0, 20), possible: possible.slice(0, 10), more: Math.max(0, items.length - 20) };\n}\n\n// ===== кінець GLPI =====\n\nconst l = String($('When Called by Agent').first().json.login || '').trim().toLowerCase();\nconst ok = /^[a-z0-9][a-z0-9._-]{1,40}$/.test(l);\nconst u = ok ? glpiUrls(l, [], []) : { user_url: '', assets_url: '' };\nreturn [{ json: { login: l, ok, ...u } }];"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    220,
+    0
+   ],
+   "id": "eef0872d-3d6a-416e-9205-e366196f38de",
+   "name": "Code: Urls"
+  },
+  {
+   "parameters": {
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpCustomAuth",
+    "options": {
+     "response": {
+      "response": {
+       "fullResponse": true,
+       "neverError": true
+      }
+     }
+    },
+    "url": "<GLPI_URL>/apirest.php/initSession"
+   },
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    440,
+    0
+   ],
+   "id": "7a6bd1c7-bbde-409b-8ad2-35efd3eae772",
+   "name": "[GLPI] Open Session",
+   "credentials": {
+    "httpCustomAuth": {
+     "id": "<ID>",
+     "name": "<NAME>"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpCustomAuth",
+    "options": {
+     "response": {
+      "response": {
+       "fullResponse": true,
+       "neverError": true
+      }
+     }
+    },
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "Session-Token",
+       "value": "={{ ($('[GLPI] Open Session').first().json.body || {}).session_token || '' }}"
+      }
+     ]
+    },
+    "url": "={{ $('Code: Urls').first().json.user_url }}"
+   },
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    660,
+    0
+   ],
+   "id": "24e08a2d-2d08-4d4a-8f27-2ddb8f0d49d2",
+   "name": "[GLPI] Find User",
+   "credentials": {
+    "httpCustomAuth": {
+     "id": "<ID>",
+     "name": "<NAME>"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpCustomAuth",
+    "options": {
+     "response": {
+      "response": {
+       "fullResponse": true,
+       "neverError": true
+      }
+     }
+    },
+    "sendHeaders": true,
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "Session-Token",
+       "value": "={{ ($('[GLPI] Open Session').first().json.body || {}).session_token || '' }}"
+      }
+     ]
+    },
+    "url": "={{ $('Code: Urls').first().json.assets_url }}"
+   },
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    880,
+    0
+   ],
+   "id": "d368f045-79ef-400d-a860-19bb3f4cdf7f",
+   "name": "[GLPI] Find Assets",
+   "credentials": {
+    "httpCustomAuth": {
+     "id": "<ID>",
+     "name": "<NAME>"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "jsCode": "// ===== GLPI (облік техніки): пошук людини і її техніки. Збірка вставляє цей код у Code-ноди замість рядка «// @@glpi». =====\n// Хто людина в GLPI: користувач, у якого логін = логін AD, або прізвище й ім'я з заявки (латиницею чи кирилицею, обидва порядки).\n// Техніка людини: позиції, де поле «Користувач» = цей користувач. Поле «Контакт» (вільний текст: логін@ПК або ПІБ)\n// лише підказка: такі позиції показуємо як «можливо», але самі по собі вони нічого не підтверджують.\n// Пошук GLPI за «містить» знаходить і схожі логіни (a.ivanov -> a.ivanova), тому точний збіг перевіряємо тут.\nconst GLPI_URL = '<GLPI_URL>/apirest.php';\nconst glpiNorm = s => String(s || '').replace(/<[^>]*>/g, '').replace(/[’ʼ`]/g, \"'\").replace(/\\s+/g, ' ').trim().toLowerCase();\n\n// Пари [ім'я, прізвище] для пошуку: з готових латинських пар і з сирих рядків заявки (обидва порядки; для 3+ слів ще перше+останнє).\nfunction glpiPairs(names, pairs) {\n  const out = [];\n  const add = (g, s) => { g = glpiNorm(g); s = glpiNorm(s); if (g && s && !out.some(p => p[0] === g && p[1] === s)) out.push([g, s]); };\n  for (const [g, s] of pairs || []) add(g, s);\n  for (const raw of names || []) {\n    const w = String(raw || '').replace(/^(ФОП|ФЛП)\\s+/i, '').split(/[\\s\\/|,]+/).filter(x => /^[\\p{L}'’ʼ-]{2,}$/u.test(x));\n    if (w.length < 2) continue;\n    add(w[0], w[1]); add(w[1], w[0]);\n    if (w.length >= 3) { add(w[0], w[w.length - 1]); add(w[w.length - 1], w[0]); }\n  }\n  return out.slice(0, 8);\n}\n\n// Два запити: користувачі GLPI (логін або прізвище+ім'я) і техніка (поле «Користувач» або «Контакт» містить логін чи слово з ПІБ).\nfunction glpiUrls(login, names, pairs) {\n  const P = glpiPairs(names, pairs), e = encodeURIComponent;\n  const c = [];\n  const crit = (i, f, v, link) => (link ? `&criteria[${i}][link]=${link}` : '') +\n    `&criteria[${i}][field]=${f}&criteria[${i}][searchtype]=contains&criteria[${i}][value]=${e(v)}`;\n  let i = 0;\n  if (login) c.push(crit(i++, 1, `^${login}$`));\n  for (const [g, s] of P) {\n    c.push(`${i ? `&criteria[${i}][link]=OR` : ''}&criteria[${i}][criteria][0][field]=34&criteria[${i}][criteria][0][searchtype]=contains` +\n      `&criteria[${i}][criteria][0][value]=${e('^' + s + '$')}&criteria[${i}][criteria][1][link]=AND&criteria[${i}][criteria][1][field]=9` +\n      `&criteria[${i}][criteria][1][searchtype]=contains&criteria[${i}][criteria][1][value]=${e('^' + g + '$')}`);\n    i++;\n  }\n  const words = [...new Set([login, ...P.flat()].filter(w => w && w.length >= 3))];\n  const a = [];\n  let j = 0;\n  for (const w of words) { a.push(crit(j, 70, w, j ? 'OR' : '')); j++; a.push(crit(j, 7, w, 'OR')); j++; }\n  return {\n    user_url: c.length ? `${GLPI_URL}/search/User?${c.join('').slice(1)}&forcedisplay[0]=1&forcedisplay[1]=2&forcedisplay[2]=9&forcedisplay[3]=34&uid_cols=true&range=0-50` : '',\n    assets_url: a.length ? `${GLPI_URL}/search/AllAssets?${a.join('').slice(1)}&forcedisplay[0]=1&forcedisplay[1]=5&forcedisplay[2]=6&forcedisplay[3]=7` +\n      '&forcedisplay[4]=23&forcedisplay[5]=31&forcedisplay[6]=70&uid_cols=true&range=0-500' : '',\n  };\n}\n\n// Результат: status = assigned | clear | check | not_in_glpi | ambiguous | error; items (за користувачем), possible (лише «Контакт»).\nfunction glpiCheck(login, names, pairs, session, users, assets) {\n  const P = glpiPairs(names, pairs), L = glpiNorm(login);\n  const bad = r => !r || Number(r.statusCode) !== 200 || !r.body;\n  const why = r => `${(r && r.statusCode) || 'немає відповіді'}${r && r.body ? ': ' + String(JSON.stringify(r.body)).slice(0, 120) : ''}`;\n  if (bad(session)) return { status: 'error', error: 'вхід у GLPI ' + why(session), items: [], possible: [] };\n  if (bad(users) || bad(assets)) return { status: 'error', error: 'пошук у GLPI ' + why(bad(users) ? users : assets), items: [], possible: [] };\n  const val = (r, k) => glpiNorm(r[k]);\n  const found = (users.body.data || []).filter(u => (L && val(u, 'User.name') === L) ||\n    P.some(([g, s]) => val(u, 'User.realname') === s && val(u, 'User.firstname') === g));\n  const logins = [...new Set(found.map(u => val(u, 'User.name')))];\n  const TYPES = { Computer: \"Комп'ютер\", Monitor: 'Монітор', Peripheral: 'Периферія', Printer: 'Принтер', Phone: 'Телефон', NetworkEquipment: 'Мережеве обладнання' };\n  const line = r => {\n    const f = (k, label) => { const v = String(r[k] || '').replace(/<[^>]*>/g, '').trim(); return v ? `${label}${v}` : ''; };\n    return [`${TYPES[r.itemtype] || r.itemtype} «${String(r['AllAssets..name'] || 'без назви').replace(/<[^>]*>/g, '').trim()}»`,\n      f('AllAssets..otherserial', 'інв. № '), f('AllAssets..serial', 'сер. № '), f('AllAssets.Manufacturer.name', ''),\n      f('AllAssets.State.completename', 'статус: '), f('AllAssets..contact', 'контакт: ')].filter(Boolean).join(', ');\n  };\n  const rows = assets.body.data || [];\n  const owner = r => String(r['AllAssets.User.name'] || '').split('$#$').map(glpiNorm);\n  const items = rows.filter(r => owner(r).some(o => logins.includes(o))).map(line);\n  const tokens = r => glpiNorm(r['AllAssets..contact']).split(/[\\s@\\\\\\/,;()]+/).filter(Boolean);\n  const possible = rows.filter(r => !owner(r).some(o => logins.includes(o)))\n    .filter(r => { const t = tokens(r); return (L && t.includes(L)) || P.some(([g, s]) => t.includes(g) && t.includes(s)); }).map(line);\n  const status = logins.length > 1 ? 'ambiguous' : items.length ? 'assigned' : !logins.length ? 'not_in_glpi' : possible.length ? 'check' : 'clear';\n  return { status, glpi_login: logins.join(', '), items: items.slice(0, 20), possible: possible.slice(0, 10), more: Math.max(0, items.length - 20) };\n}\n\n// ===== кінець GLPI =====\n\nconst v = $('Code: Urls').first().json;\nif (!v.ok) return [{ json: { ok: false, error: 'некоректний формат логіна' } }];\nconst res = glpiCheck(v.login, [], [], $('[GLPI] Open Session').first().json, $('[GLPI] Find User').first().json, $('[GLPI] Find Assets').first().json);\nif (res.status === 'error') return [{ json: { ok: false, error: 'GLPI недоступний' } }];\n// лише тип, назва, інвентарний номер, статус: серійні номери й вільний текст «контакт» не віддаємо\nconst clean = s => String(s).replace(/, сер\\. № [^,]*/g, '').replace(/, контакт: .*$/, '');\nreturn [{ json: { ok: true, status: res.status, items: res.items.map(clean), possible_count: (res.possible || []).length, more: res.more || 0 } }];"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1100,
+    0
+   ],
+   "id": "d7becf97-755d-4ded-9c73-193652ec9a4b",
+   "name": "Code: Result"
+  },
+  {
+   "parameters": {
+    "content": "## Advisor Tool: GLPI Equipment\nЛише читання (креди GLPI read-only). Видає статус (assigned / clear / check / not_in_glpi / ambiguous) і перелік: тип, назва, інв. номер, статус. Без серійних номерів і вільного тексту.",
+    "height": 160,
+    "width": 520
+   },
+   "type": "n8n-nodes-base.stickyNote",
+   "typeVersion": 1,
+   "position": [
+    -60,
+    -260
+   ],
+   "id": "bf1500ab-3003-4991-b9d9-80964e9c54e4",
+   "name": "Sticky Note"
+  }
+ ],
+ "connections": {
+  "When Called by Agent": {
+   "main": [
+    [
+     {
+      "node": "Code: Urls",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Code: Urls": {
+   "main": [
+    [
+     {
+      "node": "[GLPI] Open Session",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[GLPI] Open Session": {
+   "main": [
+    [
+     {
+      "node": "[GLPI] Find User",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[GLPI] Find User": {
+   "main": [
+    [
+     {
+      "node": "[GLPI] Find Assets",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[GLPI] Find Assets": {
+   "main": [
+    [
+     {
+      "node": "Code: Result",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1"
+ }
+}

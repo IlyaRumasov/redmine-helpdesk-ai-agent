@@ -1,0 +1,174 @@
+{
+ "name": "[PILOT] Advisor Tool: Google Guest Status",
+ "nodes": [
+  {
+   "parameters": {
+    "workflowInputs": {
+     "values": [
+      {
+       "name": "login"
+      }
+     ]
+    }
+   },
+   "type": "n8n-nodes-base.executeWorkflowTrigger",
+   "typeVersion": 1.2,
+   "position": [
+    0,
+    0
+   ],
+   "id": "a2531e45-16b5-47ff-a22c-99c84d23e19e",
+   "name": "When Called by Agent"
+  },
+  {
+   "parameters": {
+    "assignments": {
+     "assignments": [
+      {
+       "id": "a0",
+       "name": "work_mail_domain",
+       "value": "example.com",
+       "type": "string"
+      },
+      {
+       "id": "a1",
+       "name": "guest_domain",
+       "value": "guests.example.com",
+       "type": "string"
+      }
+     ]
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-base.set",
+   "typeVersion": 3.4,
+   "position": [
+    220,
+    0
+   ],
+   "id": "3497b23c-6a94-42c9-9b20-92760885b00e",
+   "name": "Config"
+  },
+  {
+   "parameters": {
+    "jsCode": "const cfg = $('Config').first().json;\nconst l = String($('When Called by Agent').first().json.login || '').trim().toLowerCase();\nconst ok = /^[a-z0-9][a-z0-9._-]{1,40}$/.test(l);\nreturn [{ json: { login: l, ok, guest: ok ? `${l}_${cfg.work_mail_domain}@${cfg.guest_domain}.guest.google` : 'none@invalid' } }];"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    440,
+    0
+   ],
+   "id": "48c6e363-6f28-425a-bd49-5abcfdbd101a",
+   "name": "Code: Validate"
+  },
+  {
+   "parameters": {
+    "method": "GET",
+    "url": "=https://admin.googleapis.com/admin/directory/v1/users/{{ encodeURIComponent($json.guest) }}?projection=basic",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "googleApi",
+    "options": {
+     "response": {
+      "response": {
+       "fullResponse": true,
+       "neverError": true
+      }
+     }
+    }
+   },
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    660,
+    0
+   ],
+   "id": "e05d6a85-474e-45fa-9f89-6e91b3db9dd6",
+   "name": "[Google] Get Guest",
+   "credentials": {
+    "googleApi": {
+     "id": "<ID>",
+     "name": "<NAME>"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "jsCode": "const cfg = $('Config').first().json;\nconst v = $('Code: Validate').first().json;\nif (!v.ok) return [{ json: { ok: false, error: 'некоректний формат логіна' } }];\nconst r = $input.first().json;\nif (Number(r.statusCode) === 404 || Number(r.statusCode) === 403) return [{ json: { ok: true, found: false } }];\nif (Number(r.statusCode) !== 200) return [{ json: { ok: false, error: 'Google відповів ' + r.statusCode } }];\nconst b = r.body || {};\nconst owner = String((b.guestAccountInfo || {}).primaryGuestEmail || '').toLowerCase();\nconst day = s => String(s || '').slice(0, 10);\nconst never = !b.lastLoginTime || String(b.lastLoginTime).startsWith('1970');\nreturn [{ json: { ok: true, found: true, suspended: !!b.suspended, enrolled_2sv: !!b.isEnrolledIn2Sv, created: day(b.creationTime),\n  last_login: never ? '' : day(b.lastLoginTime), never_logged_in: never,\n  owner_matches_login: owner === `${v.login}@${cfg.work_mail_domain}` } }];"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    880,
+    0
+   ],
+   "id": "adff2d1a-41cb-41f6-afbc-84cff30bcf58",
+   "name": "Code: Result"
+  },
+  {
+   "parameters": {
+    "content": "## Advisor Tool: Google Guest Status\nЛише читання одного гостьового акаунта за логіном. Видає: існує, призупинено, налаштована 2FA, дати створення й останнього входу, чи прив'язка збігається з робочою поштою. Паролів і резервних кодів немає.",
+    "height": 160,
+    "width": 520
+   },
+   "type": "n8n-nodes-base.stickyNote",
+   "typeVersion": 1,
+   "position": [
+    -60,
+    -260
+   ],
+   "id": "01566b09-40e4-42ac-b409-3bbac3c83b56",
+   "name": "Sticky Note"
+  }
+ ],
+ "connections": {
+  "When Called by Agent": {
+   "main": [
+    [
+     {
+      "node": "Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Config": {
+   "main": [
+    [
+     {
+      "node": "Code: Validate",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Code: Validate": {
+   "main": [
+    [
+     {
+      "node": "[Google] Get Guest",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Google] Get Guest": {
+   "main": [
+    [
+     {
+      "node": "Code: Result",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1"
+ }
+}

@@ -1,0 +1,206 @@
+{
+ "name": "[PILOT] Advisor Tool: Similar Tickets",
+ "nodes": [
+  {
+   "parameters": {
+    "workflowInputs": {
+     "values": [
+      {
+       "name": "query"
+      }
+     ]
+    }
+   },
+   "type": "n8n-nodes-base.executeWorkflowTrigger",
+   "typeVersion": 1.2,
+   "position": [
+    0,
+    0
+   ],
+   "id": "a30bce08-c768-44a3-9f19-1a8f4f9a4c3c",
+   "name": "When Called by Agent"
+  },
+  {
+   "parameters": {
+    "jsCode": "const q = String($('When Called by Agent').first().json.query || '').replace(/\\s+/g, ' ').trim().slice(0, 1500);\nreturn [{ json: { q, ok: q.length >= 3 } }];"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    220,
+    0
+   ],
+   "id": "8bd1e41b-7c21-4811-82a5-be338c1bf725",
+   "name": "Code: Prepare"
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "googlePalmApi",
+    "options": {
+     "response": {
+      "response": {
+       "fullResponse": true,
+       "neverError": true
+      }
+     }
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ model: 'models/gemini-embedding-001', content: { parts: [{ text: $json.q || 'x' }] }, taskType: 'RETRIEVAL_QUERY' }) }}"
+   },
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    440,
+    0
+   ],
+   "id": "99fc75e0-bc0d-46b2-9dd2-ef89090bfcb4",
+   "name": "[Gemini] Embed Query",
+   "credentials": {
+    "googlePalmApi": {
+     "id": "<GEMINI_CRED>",
+     "name": "<NAME>"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "jsCode": "const body = ($input.first().json.body || {});\nconst v = (body.embedding || {}).values;\nif (!v) throw new Error('немає вектора запиту');\nreturn [{ json: { search: { vector: v, limit: 4, with_payload: true } } }];"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    660,
+    0
+   ],
+   "id": "90cee6be-a972-45dd-a33a-ce220d2197e9",
+   "name": "Code: Search Body"
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "http://<QDRANT_HOST>:6333/collections/it_support_kb/points/search",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "qdrantApi",
+    "options": {
+     "response": {
+      "response": {
+       "fullResponse": true,
+       "neverError": true
+      }
+     }
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($json.search) }}"
+   },
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    880,
+    0
+   ],
+   "id": "50906c89-7ab9-412d-b8bf-ac16ee7f9515",
+   "name": "[Qdrant] Search",
+   "credentials": {
+    "qdrantApi": {
+     "id": "<QDRANT_CRED_ID>",
+     "name": "<QDRANT_CRED_NAME>"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "jsCode": "if (!$('Code: Prepare').first().json.ok) return [{ json: { ok: false, error: 'запит надто короткий' } }];\nconst b = $input.first().json.body || {};\nif (!Array.isArray(b.result)) return [{ json: { ok: false, error: 'пошук недоступний' } }];\nreturn [{ json: { ok: true, results: b.result.map(r => { const m = (r.payload || {}).metadata || {}; return { ticket: m.ticket, score: r.score, text: String(r.payload.content || '').slice(0, 900) }; }) } }];"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1100,
+    0
+   ],
+   "id": "ed32d706-7795-4432-a1ee-a9b2bb7bb7d8",
+   "name": "Code: Result"
+  },
+  {
+   "parameters": {
+    "content": "## Advisor Tool: Similar Tickets\nПошук за змістом у базі обезличених вирішених заявок (it_support_kb). Лише читання; на виході номер заявки, близькість і уривок.",
+    "height": 160,
+    "width": 520
+   },
+   "type": "n8n-nodes-base.stickyNote",
+   "typeVersion": 1,
+   "position": [
+    -60,
+    -260
+   ],
+   "id": "03cb202d-c09d-4968-a6a3-afa05ea3155b",
+   "name": "Sticky Note"
+  }
+ ],
+ "connections": {
+  "When Called by Agent": {
+   "main": [
+    [
+     {
+      "node": "Code: Prepare",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Code: Prepare": {
+   "main": [
+    [
+     {
+      "node": "[Gemini] Embed Query",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Gemini] Embed Query": {
+   "main": [
+    [
+     {
+      "node": "Code: Search Body",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Code: Search Body": {
+   "main": [
+    [
+     {
+      "node": "[Qdrant] Search",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Qdrant] Search": {
+   "main": [
+    [
+     {
+      "node": "Code: Result",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1"
+ }
+}

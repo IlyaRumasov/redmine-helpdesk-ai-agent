@@ -1,0 +1,175 @@
+{
+ "name": "[PILOT] Advisor Tool: Ticket History",
+ "nodes": [
+  {
+   "parameters": {
+    "workflowInputs": {
+     "values": [
+      {
+       "name": "ticket_id"
+      }
+     ]
+    }
+   },
+   "type": "n8n-nodes-base.executeWorkflowTrigger",
+   "typeVersion": 1.2,
+   "position": [
+    0,
+    0
+   ],
+   "id": "d9090074-3bf9-4fd8-b50f-ce6df601b04a",
+   "name": "When Called by Agent"
+  },
+  {
+   "parameters": {
+    "assignments": {
+     "assignments": [
+      {
+       "id": "a0",
+       "name": "project_id",
+       "value": "<PROJECT_ID>",
+       "type": "string"
+      },
+      {
+       "id": "a1",
+       "name": "text_limit",
+       "value": "2500",
+       "type": "string"
+      },
+      {
+       "id": "a2",
+       "name": "note_limit",
+       "value": "800",
+       "type": "string"
+      }
+     ]
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-base.set",
+   "typeVersion": 3.4,
+   "position": [
+    220,
+    0
+   ],
+   "id": "b379ffeb-d4c0-4586-b672-bb3db1477f61",
+   "name": "Config"
+  },
+  {
+   "parameters": {
+    "jsCode": "const id = String($('When Called by Agent').first().json.ticket_id || '').trim();\nreturn [{ json: { ticket_id: /^\\d{1,9}$/.test(id) ? id : '0' } }];"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    440,
+    0
+   ],
+   "id": "c4e518a5-8ee3-4b51-99be-67564e397e76",
+   "name": "Code: Validate"
+  },
+  {
+   "parameters": {
+    "operation": "get",
+    "issueId": "={{ $json.ticket_id }}",
+    "include": [
+     "journals"
+    ],
+    "options": {}
+   },
+   "type": "n8n-nodes-redmine.redmine",
+   "typeVersion": 1,
+   "position": [
+    660,
+    0
+   ],
+   "id": "6a1dee23-11f6-454c-b638-dd49148a233e",
+   "name": "[Redmine] Get Ticket",
+   "credentials": {
+    "redmineApi": {
+     "id": "<ID>",
+     "name": "<NAME>"
+    }
+   },
+   "onError": "continueRegularOutput",
+   "alwaysOutputData": true
+  },
+  {
+   "parameters": {
+    "jsCode": "const cfg = $('Config').first().json;\nconst j = $input.first().json || {};\nconst t = j.issue || j;\nif (!t.id) return [{ json: { ok: false, error: 'заявку не знайдено або немає доступу' } }];\nif (String(t.project && t.project.id) !== String(cfg.project_id)) return [{ json: { ok: false, error: 'заявка не з проєкту HelpDesk' } }];\nconst cut = (s, n) => String(s || '').replace(/\\r/g, '').slice(0, n);\nconst notes = (t.journals || []).filter(x => (x.notes || '').trim()).slice(-30)\n  .map(x => ({ on: x.created_on, private: !!x.private_notes, text: cut(x.notes, Number(cfg.note_limit)) }));\nreturn [{ json: { ok: true, id: t.id, subject: cut(t.subject, 300), description: cut(t.description, Number(cfg.text_limit)),\n  status: t.status && t.status.name, created: t.created_on, notes } }];"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    880,
+    0
+   ],
+   "id": "6a1383f2-bc5b-423e-a489-11b2cefbe5b0",
+   "name": "Code: Result"
+  },
+  {
+   "parameters": {
+    "content": "## Advisor Tool: Ticket History\nЛише читання однієї заявки HelpDesk. На виході: тема, опис, статус, коментарі (до 30). Без вкладень, власних полів і даних авторів.",
+    "height": 160,
+    "width": 520
+   },
+   "type": "n8n-nodes-base.stickyNote",
+   "typeVersion": 1,
+   "position": [
+    -60,
+    -260
+   ],
+   "id": "c64d053f-5389-4904-b2d6-d038a098f261",
+   "name": "Sticky Note"
+  }
+ ],
+ "connections": {
+  "When Called by Agent": {
+   "main": [
+    [
+     {
+      "node": "Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Config": {
+   "main": [
+    [
+     {
+      "node": "Code: Validate",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Code: Validate": {
+   "main": [
+    [
+     {
+      "node": "[Redmine] Get Ticket",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Redmine] Get Ticket": {
+   "main": [
+    [
+     {
+      "node": "Code: Result",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1"
+ }
+}

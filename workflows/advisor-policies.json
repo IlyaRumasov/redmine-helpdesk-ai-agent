@@ -1,0 +1,206 @@
+{
+ "name": "[PILOT] Advisor Tool: Policies",
+ "nodes": [
+  {
+   "parameters": {
+    "workflowInputs": {
+     "values": [
+      {
+       "name": "query"
+      }
+     ]
+    }
+   },
+   "type": "n8n-nodes-base.executeWorkflowTrigger",
+   "typeVersion": 1.2,
+   "position": [
+    0,
+    0
+   ],
+   "id": "caa206df-a237-432a-9fa5-4d25495a4685",
+   "name": "When Called by Agent"
+  },
+  {
+   "parameters": {
+    "jsCode": "const q = String($('When Called by Agent').first().json.query || '').replace(/\\s+/g, ' ').trim().slice(0, 1500);\nreturn [{ json: { q, ok: q.length >= 3 } }];"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    220,
+    0
+   ],
+   "id": "2f323139-b8d5-4831-9878-c59864b1b1fe",
+   "name": "Code: Prepare"
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "googlePalmApi",
+    "options": {
+     "response": {
+      "response": {
+       "fullResponse": true,
+       "neverError": true
+      }
+     }
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ model: 'models/gemini-embedding-001', content: { parts: [{ text: $json.q || 'x' }] }, taskType: 'RETRIEVAL_QUERY' }) }}"
+   },
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    440,
+    0
+   ],
+   "id": "2fe2db63-9355-46e4-8431-3afad951db43",
+   "name": "[Gemini] Embed Query",
+   "credentials": {
+    "googlePalmApi": {
+     "id": "<GEMINI_CRED>",
+     "name": "<NAME>"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "jsCode": "const body = ($input.first().json.body || {});\nconst v = (body.embedding || {}).values;\nif (!v) throw new Error('немає вектора запиту');\nreturn [{ json: { search: { vector: v, limit: 4, with_payload: true, filter: {\"must\": [{\"key\": \"metadata.category\", \"match\": {\"any\": [\"policy\", \"howto\"]}}]} } } }];"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    660,
+    0
+   ],
+   "id": "3f772cc7-80e5-46ce-b2d0-62a3eb5aeac5",
+   "name": "Code: Search Body"
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "http://<QDRANT_HOST>:6333/collections/policies_kb/points/search",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "qdrantApi",
+    "options": {
+     "response": {
+      "response": {
+       "fullResponse": true,
+       "neverError": true
+      }
+     }
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify($json.search) }}"
+   },
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    880,
+    0
+   ],
+   "id": "47126677-ac22-48ac-837a-c52c09fade06",
+   "name": "[Qdrant] Search",
+   "credentials": {
+    "qdrantApi": {
+     "id": "<QDRANT_CRED_ID>",
+     "name": "<QDRANT_CRED_NAME>"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "jsCode": "if (!$('Code: Prepare').first().json.ok) return [{ json: { ok: false, error: 'запит надто короткий' } }];\nconst b = $input.first().json.body || {};\nif (!Array.isArray(b.result)) return [{ json: { ok: false, error: 'пошук недоступний' } }];\nreturn [{ json: { ok: true, results: b.result.map(r => { const m = (r.payload || {}).metadata || {}; return { file: String(m.fileName || '').slice(0, 120), category: m.category, score: r.score, text: String(r.payload.content || '').slice(0, 900) }; }) } }];"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1100,
+    0
+   ],
+   "id": "766e22c5-5d49-4187-a47f-f555e2ca7df3",
+   "name": "Code: Result"
+  },
+  {
+   "parameters": {
+    "content": "## Advisor Tool: Policies\nПошук за змістом у політиках та інструкціях (policies_kb). Фільтр категорій policy і howto зашитий у код, гайди клієнтів недоступні.",
+    "height": 160,
+    "width": 520
+   },
+   "type": "n8n-nodes-base.stickyNote",
+   "typeVersion": 1,
+   "position": [
+    -60,
+    -260
+   ],
+   "id": "5658ea36-8f69-4235-adbc-7765e56be5b1",
+   "name": "Sticky Note"
+  }
+ ],
+ "connections": {
+  "When Called by Agent": {
+   "main": [
+    [
+     {
+      "node": "Code: Prepare",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Code: Prepare": {
+   "main": [
+    [
+     {
+      "node": "[Gemini] Embed Query",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Gemini] Embed Query": {
+   "main": [
+    [
+     {
+      "node": "Code: Search Body",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Code: Search Body": {
+   "main": [
+    [
+     {
+      "node": "[Qdrant] Search",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Qdrant] Search": {
+   "main": [
+    [
+     {
+      "node": "Code: Result",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1"
+ }
+}
