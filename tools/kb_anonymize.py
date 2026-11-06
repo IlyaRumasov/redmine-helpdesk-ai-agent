@@ -22,13 +22,16 @@ IMG = re.compile(r"!\S+\.(?:png|jpg|jpeg|gif)!|!clipboard-\S+!")
 LOGIN = re.compile(r"\b(?:ms|mdy)[._][a-z0-9][a-z0-9._-]*[a-z0-9]\b|\b[a-z][a-z0-9-]{0,20}[._][a-z][a-z0-9._-]{2,30}\b", re.I)
 SAFE_DOTTED = re.compile(r"\.(?:com|net|org|pdf|png|jpg|docx?|xlsx?|txt|json|csv|zip|exe|msi|local|google|io|ua|ai|tech)$", re.I)
 SIGN = re.compile(r"(?is)\n-- ?\n.*$")
+QUOTE_HDR = re.compile(r"(?m)^.*\bwrote in #note-\d+:[ \t]*\n?")  # «Ім'я Прізвище wrote in #note-6:» (цитата Redmine з іменем автора)
 CAP = r"[А-ЯІЇЄҐ][а-яіїєґ'’-]{2,}"
 # ПІБ за по батькові: «Прізвище Ім'я По-батькові» (і в зворотному порядку), навіть якщо людини немає серед авторів заявок
 FIO = re.compile(rf"\b{CAP}\s+{CAP}\s+{CAP}(?:ович|евич|йович|ович|ич|івна|ївна|евна|овна|ична|ична)\b|\b{CAP}\s+{CAP}(?:ович|евич|йович|ич|івна|ївна|евна|овна)\b")
 DOMAIN = re.compile(r"\b(?:[a-z0-9-]+\.)+(?:com|net|org|io|ua|us|ai|dev|tech|co|eu|info|biz|me|app|cloud|pl|de|ru)\b", re.I)
 BIGRAM = re.compile(rf"\b({CAP})\s+({CAP})\b")
 CLIENTS = re.compile(r"\b(?:<CLIENT_NAME_A>|<CLIENT_NAME_B>)\b", re.I)
-GENERIC_DOMAINS = {"google.com", "gmail.com", "microsoft.com", "office.com", "zoom.us", "github.com", "docs.google.com", "meet.google.com", "teams.microsoft.com"}
+# слова з великої літери, що збігаються з іменем якогось користувача, але іменами не є (знайдено перевіркою замін на всьому корпусі)
+EXTRA_STOP = {"redmine", "hello", "acme", "user", "users", "finance", "test", "editor", "vendor", "change", "lutsk", "адміни", "support", "teams", "google"}
+GENERIC_DOMAINS ={"google.com", "gmail.com", "microsoft.com", "office.com", "zoom.us", "github.com", "docs.google.com", "meet.google.com", "teams.microsoft.com"}
 
 
 def build_name_tokens(issues, journals):
@@ -54,11 +57,14 @@ def build_name_tokens(issues, journals):
 
 def make_cleaner(tokens, stop=frozenset()):
     low = {t.lower() for t in tokens}
-    cap_word = re.compile(r"[А-ЯІЇЄҐA-Z][а-яіїєґa-z'’-]{2,}")
+    cap_word = re.compile(r"\b[А-ЯІЇЄҐA-Z][а-яіїєґa-z'’-]{2,}\b")
 
     def is_name(w):
         w = w.lower()
-        return any(w[:len(w) - k] in low for k in range(0, 4) if len(w) - k >= 4)
+        forms = [w[:len(w) - k] for k in range(0, 4) if len(w) - k >= 4]
+        if any(f in stop for f in forms):  # часті слова (Redmine, Acme, Hello, привітання) не вважаємо іменами, навіть якщо є користувач із таким словом в імені
+            return False
+        return any(f in low for f in forms)
 
     class _TokRe:  # імітує re.sub з тим самим інтерфейсом: лише слова з великої літери, що збігаються з іменами (з відмінковими закінченнями)
         @staticmethod
@@ -88,6 +94,7 @@ def make_cleaner(tokens, stop=frozenset()):
         text = (text or "").replace("\r", "")
         text = IMG.sub("", text)
         text = SIGN.sub("", text)
+        text = QUOTE_HDR.sub("", text)
         text = sub(EMAIL, "<EMAIL>", text)
         text = sub(HANDLE, "<HANDLE>", text)
         text = sub(URL, "<URL>", text)
@@ -116,7 +123,7 @@ def main():
     for t in journals:
         txt = (t.get("description") or "") + " " + " ".join((j.get("notes") or "") for j in t["journals"])
         freq.update(w.lower() for w in re.findall(CAP, txt))
-    stop = {w for w, c in freq.items() if c >= 10} | {"нова", "нової", "пошта", "пошти", "сервіс", "редмайн", "гугл", "драйв", "тімс", "зум", "вітаю", "привіт", "добрий", "доброго", "дякую"}
+    stop = {w for w, c in freq.items() if c >= 10} | {"нова", "нової", "пошта", "пошти", "сервіс", "редмайн", "гугл", "драйв", "тімс", "зум", "вітаю", "привіт", "добрий", "доброго", "дякую"} | EXTRA_STOP
     clean, counts = make_cleaner(build_name_tokens(issues, journals), stop)
     OUT.mkdir(exist_ok=True)
     rows, skipped = [], collections.Counter()

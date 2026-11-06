@@ -1,5 +1,5 @@
 {
- "name": "[PILOT] Advisor Tool: Ticket History",
+ "name": "Радник (інструмент): Ticket History",
  "nodes": [
   {
    "parameters": {
@@ -17,7 +17,7 @@
     0,
     0
    ],
-   "id": "d9090074-3bf9-4fd8-b50f-ce6df601b04a",
+   "id": "2801ea06-dade-4c8b-9e1e-b751f4276b6e",
    "name": "When Called by Agent"
   },
   {
@@ -52,7 +52,7 @@
     220,
     0
    ],
-   "id": "b379ffeb-d4c0-4586-b672-bb3db1477f61",
+   "id": "a350e984-bb89-455b-b19e-a9cf98389f05",
    "name": "Config"
   },
   {
@@ -65,7 +65,7 @@
     440,
     0
    ],
-   "id": "c4e518a5-8ee3-4b51-99be-67564e397e76",
+   "id": "7e695e05-392c-416b-9ed1-3c46e2a38a39",
    "name": "Code: Validate"
   },
   {
@@ -83,7 +83,7 @@
     660,
     0
    ],
-   "id": "6a1dee23-11f6-454c-b638-dd49148a233e",
+   "id": "23837917-9ca5-4b7f-8b70-958ef1f386b9",
    "name": "[Redmine] Get Ticket",
    "credentials": {
     "redmineApi": {
@@ -104,7 +104,7 @@
     880,
     0
    ],
-   "id": "6a1383f2-bc5b-423e-a489-11b2cefbe5b0",
+   "id": "c03764d3-b046-408a-a9ca-6ebce2175710",
    "name": "Code: Result"
   },
   {
@@ -119,7 +119,7 @@
     -60,
     -260
    ],
-   "id": "c64d053f-5389-4904-b2d6-d038a098f261",
+   "id": "fe9ab7ac-6556-421e-8dfd-e694696b1a9a",
    "name": "Sticky Note"
   }
  ],

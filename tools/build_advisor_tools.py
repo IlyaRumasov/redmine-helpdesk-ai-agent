@@ -64,7 +64,7 @@ def http_json(name, method, url, cred_type, cred, body_expr=None):
 
 # ---------- 1. історія заявки ----------
 def ticket_tool(rm_id, rm_name):
-    f = Flow("[PILOT] Advisor Tool: Ticket History")
+    f = Flow("Радник (інструмент): Ticket History")
     f.trigger(["ticket_id"])
     f.config({"project_id": "<PROJECT_ID>", "text_limit": "2500", "note_limit": "800"})
     f.code("Code: Validate", r"""
@@ -97,23 +97,39 @@ return [{ json: { q, ok: q.length >= 3 } }];""")
                            "googlePalmApi", {"googlePalmApi": gem_cred},
                            "={{ JSON.stringify({ model: 'models/gemini-embedding-001', content: { parts: [{ text: $json.q || 'x' }] }, taskType: 'RETRIEVAL_QUERY' }) }}")
     f.add(n, t, p, ver=4.2, credentials=c, onError="continueRegularOutput")
-    f.code("Code: Search Body", ("const body = ($input.first().json.body || {});\nconst v = (body.embedding || {}).values;\n"
-                                 "if (!v) throw new Error('немає вектора запиту');\n"
-                                 "return [{ json: { search: { vector: v, limit: 4, with_payload: true%s } } }];") % (", filter: " + json.dumps(flt) if flt else ""))
-    n, t, p, c = http_json("[Qdrant] Search", "POST", f"{QDRANT}/collections/{collection}/points/search", "qdrantApi",
+    kb = collection.startswith("it_support_kb")
+    if kb:  # одним батч-запитом: 3 схожі заявки (без плейбуків) + 2 найкращі затверджені плейбуки
+        pb = json.dumps({"key": "metadata.source", "match": {"value": "playbook"}})
+        f.code("Code: Search Body", ("const body = ($input.first().json.body || {});\nconst v = (body.embedding || {}).values;\n"
+                                     "if (!v) throw new Error('немає вектора запиту');\n"
+                                     "const pb = %s;\n"
+                                     "return [{ json: { search: { searches: [\n"
+                                     "  { vector: v, limit: 3, with_payload: true, filter: { must_not: [pb] } },\n"
+                                     "  { vector: v, limit: 3, with_payload: true, filter: { must: [pb] } } ] } } }];") % pb)
+    else:
+        f.code("Code: Search Body", ("const body = ($input.first().json.body || {});\nconst v = (body.embedding || {}).values;\n"
+                                     "if (!v) throw new Error('немає вектора запиту');\n"
+                                     "return [{ json: { search: { vector: v, limit: 4, with_payload: true%s } } }];") % (", filter: " + json.dumps(flt) if flt else ""))
+    n, t, p, c = http_json("[Qdrant] Search", "POST", f"{QDRANT}/collections/{collection}/points/search" + ("/batch" if kb else ""), "qdrantApi",
                            {"qdrantApi": {"id": "<QDRANT_CRED_ID>", "name": "<QDRANT_CRED_NAME>"}}, "={{ JSON.stringify($json.search) }}")
     f.add(n, t, p, ver=4.2, credentials=c, onError="continueRegularOutput")
     pick = ("{ ticket: m.ticket, score: r.score, text: String(r.payload.content || '').slice(0, 900) }" if collection.startswith("it_support_kb")
             else "{ file: String(m.fileName || '').slice(0, 120), category: m.category, score: r.score, text: String(r.payload.content || '').slice(0, 900) }")
-    f.code("Code: Result", ("if (!$('Code: Prepare').first().json.ok) return [{ json: { ok: false, error: 'запит надто короткий' } }];\n"
-                            "const b = $input.first().json.body || {};\nif (!Array.isArray(b.result)) return [{ json: { ok: false, error: 'пошук недоступний' } }];\n"
-                            "return [{ json: { ok: true, results: b.result.map(r => { const m = (r.payload || {}).metadata || {}; return %s; }) } }];") % pick)
+    if kb:
+        f.code("Code: Result", ("if (!$('Code: Prepare').first().json.ok) return [{ json: { ok: false, error: 'запит надто короткий' } }];\n"
+                                "const b = $input.first().json.body || {};\nif (!Array.isArray(b.result) || b.result.length < 2) return [{ json: { ok: false, error: 'пошук недоступний' } }];\n"
+                                "const pick = r => { const m = (r.payload || {}).metadata || {}; return %s; };\n"
+                                "return [{ json: { ok: true, results: (b.result[0] || []).map(pick), approved_playbooks: (b.result[1] || []).map(pick) } }];") % pick)
+    else:
+        f.code("Code: Result", ("if (!$('Code: Prepare').first().json.ok) return [{ json: { ok: false, error: 'запит надто короткий' } }];\n"
+                                "const b = $input.first().json.body || {};\nif (!Array.isArray(b.result)) return [{ json: { ok: false, error: 'пошук недоступний' } }];\n"
+                                "return [{ json: { ok: true, results: b.result.map(r => { const m = (r.payload || {}).metadata || {}; return %s; }) } }];") % pick)
     return f.export(f"## Advisor Tool: {label}\n{extra_note}")
 
 
 # ---------- 4. AD ----------
 def ad_tool(ldap_id, ldap_name):
-    f = Flow("[PILOT] Advisor Tool: AD User Status")
+    f = Flow("Радник (інструмент): AD User Status")
     f.trigger(["login"])
     f.config({"scope_dn": "OU=AllUsers,OU=ORG,DC=example,DC=com", "protected_groups": "Domain Admins,Enterprise Admins,Administrators,Schema Admins"})
     f.code("Code: Validate", r"""
@@ -148,7 +164,7 @@ return [{ json: { ok: true, found: true, restricted: false, enabled: !(uac & 2),
 
 # ---------- 5. Google guest ----------
 def google_tool(g_id, g_name):
-    f = Flow("[PILOT] Advisor Tool: Google Guest Status")
+    f = Flow("Радник (інструмент): Google Guest Status")
     f.trigger(["login"])
     f.config({"work_mail_domain": "example.com", "guest_domain": "guests.example.com"})
     f.code("Code: Validate", r"""
@@ -181,7 +197,7 @@ return [{ json: { ok: true, found: true, suspended: !!b.suspended, enrolled_2sv:
 # ---------- 6. GLPI ----------
 def glpi_tool(glpi_cred_id, glpi_cred_name, glpi_url):
     lib = GLPI_JS.read_text(encoding="utf-8").replace("<GLPI_URL>", glpi_url)
-    f = Flow("[PILOT] Advisor Tool: GLPI Equipment")
+    f = Flow("Радник (інструмент): GLPI Equipment")
     f.trigger(["login"])
     f.code("Code: Urls", lib + r"""
 const l = String($('When Called by Agent').first().json.login || '').trim().toLowerCase();
@@ -209,9 +225,9 @@ return [{ json: { ok: true, status: res.status, items: res.items.map(clean), pos
 def build_all(cfg):
     return {
         "advisor-ticket": ticket_tool(*cfg["rm"]),
-        "advisor-similar": qdrant_search_tool("[PILOT] Advisor Tool: Similar Tickets", "it_support_kb", cfg["gem"], None, "Similar Tickets",
-                                              "Пошук за змістом у базі обезличених вирішених заявок (it_support_kb). Лише читання; на виході номер заявки, близькість і уривок."),
-        "advisor-policies": qdrant_search_tool("[PILOT] Advisor Tool: Policies", "policies_kb", cfg["gem"],
+        "advisor-similar": qdrant_search_tool("Радник (інструмент): Similar Tickets", "it_support_kb", cfg["gem"], None, "Similar Tickets",
+                                              "Пошук за змістом у базі обезличених вирішених заявок (it_support_kb). Лише читання; одним запитом: 3 схожі заявки (results) і 2 затверджені плейбуки (approved_playbooks, ticket = playbook-N)."),
+        "advisor-policies": qdrant_search_tool("Радник (інструмент): Policies", "policies_kb", cfg["gem"],
                                                {"must": [{"key": "metadata.category", "match": {"any": ["policy", "howto"]}}]}, "Policies",
                                                "Пошук за змістом у політиках та інструкціях (policies_kb). Фільтр категорій policy і howto зашитий у код, гайди клієнтів недоступні."),
         "advisor-ad-user": ad_tool(*cfg["ldap"]),

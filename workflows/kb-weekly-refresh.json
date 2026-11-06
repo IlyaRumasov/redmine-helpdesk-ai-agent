@@ -1,0 +1,403 @@
+{
+ "name": "Сервіс: KB Weekly Refresh",
+ "nodes": [
+  {
+   "parameters": {
+    "content": "## KB: Weekly Refresh\nЩопонеділка 08:00: нові закриті заявки HelpDesk (за days_back днів) -> коментарі -> обезличення (Code: Anonymize, порт kb_anonymize.py) -> Gemini embedding -> Qdrant it_support_kb. Id точок = uuid5 від номера заявки: повтор не дублює. Плейбуки не чіпає.\nСлова для обезличення: таблиця kb_name_tokens (name / stop).",
+    "height": 190,
+    "width": 640
+   },
+   "type": "n8n-nodes-base.stickyNote",
+   "typeVersion": 1,
+   "position": [
+    -200,
+    -300
+   ],
+   "id": "5467065c-b53b-4c6e-a9da-cc9903fa8c21",
+   "name": "Sticky Note"
+  },
+  {
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "field": "weeks",
+       "weeksInterval": 1,
+       "triggerAtDay": [
+        1
+       ],
+       "triggerAtHour": 8
+      }
+     ]
+    }
+   },
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.2,
+   "position": [
+    0,
+    0
+   ],
+   "id": "9f69bc24-b115-4526-8a4a-a1f2f1a3e957",
+   "name": "Every Monday 08:00"
+  },
+  {
+   "parameters": {
+    "assignments": {
+     "assignments": [
+      {
+       "id": "a1",
+       "name": "days_back",
+       "value": 10,
+       "type": "number"
+      },
+      {
+       "id": "a2",
+       "name": "limit",
+       "value": 100,
+       "type": "number"
+      },
+      {
+       "id": "a3",
+       "name": "min_answer",
+       "value": 80,
+       "type": "number"
+      }
+     ]
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-base.set",
+   "typeVersion": 3.4,
+   "position": [
+    220,
+    0
+   ],
+   "id": "99ab44dd-e7d0-44e4-8464-0c1779d81ee8",
+   "name": "Config"
+  },
+  {
+   "parameters": {
+    "operation": "getAll",
+    "returnAll": false,
+    "limit": "={{ $json.limit }}",
+    "filters": {
+     "project_id": "<PROJECT_ID>",
+     "status_id": "closed"
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-redmine.redmine",
+   "typeVersion": 1,
+   "position": [
+    440,
+    0
+   ],
+   "id": "81f39e20-5250-49f1-bb37-0b7cf29c828f",
+   "name": "[Redmine] Get Issues",
+   "credentials": {
+    "redmineApi": {
+     "id": "<REDMINE_CRED>",
+     "name": "Redmine <ENV> account"
+    }
+   },
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 5000
+  },
+  {
+   "parameters": {
+    "fieldToSplitOut": "issues",
+    "options": {}
+   },
+   "type": "n8n-nodes-base.splitOut",
+   "typeVersion": 1,
+   "position": [
+    660,
+    0
+   ],
+   "id": "fbe2b1b5-622e-4100-9b6f-cc3825cd0578",
+   "name": "Split Issues"
+  },
+  {
+   "parameters": {
+    "conditions": {
+     "options": {
+      "caseSensitive": true,
+      "leftValue": "",
+      "typeValidation": "strict",
+      "version": 2
+     },
+     "conditions": [
+      {
+       "id": "c1",
+       "leftValue": "={{ $json.updated_on }}",
+       "rightValue": "={{ $now.minus({ days: $('Config').first().json.days_back }).toISO() }}",
+       "operator": {
+        "type": "dateTime",
+        "operation": "after"
+       }
+      }
+     ],
+     "combinator": "and"
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-base.filter",
+   "typeVersion": 2.2,
+   "position": [
+    770,
+    0
+   ],
+   "id": "555d2a3d-2ad2-40ce-8222-033df3ced146",
+   "name": "Filter Recent"
+  },
+  {
+   "parameters": {
+    "operation": "get",
+    "issueId": "={{ $json.id }}",
+    "include": [
+     "journals"
+    ],
+    "options": {}
+   },
+   "type": "n8n-nodes-redmine.redmine",
+   "typeVersion": 1,
+   "position": [
+    990,
+    0
+   ],
+   "id": "785bdbd4-b171-41ba-a8e6-210dd1ad4ef2",
+   "name": "[Redmine] Get Ticket",
+   "credentials": {
+    "redmineApi": {
+     "id": "<REDMINE_CRED>",
+     "name": "Redmine <ENV> account"
+    }
+   },
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 5000
+  },
+  {
+   "parameters": {
+    "resource": "row",
+    "operation": "get",
+    "dataTableId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "<NAME_TOKENS_TABLE>"
+    },
+    "returnAll": true,
+    "matchType": "anyCondition",
+    "filters": {}
+   },
+   "type": "n8n-nodes-base.dataTable",
+   "typeVersion": 1.1,
+   "position": [
+    1210,
+    0
+   ],
+   "id": "4fea214d-bcf6-4867-8f39-b48099d9af9c",
+   "name": "[Data Table] Get Names",
+   "alwaysOutputData": true,
+   "executeOnce": true
+  },
+  {
+   "parameters": {
+    "jsCode": "const W = String.raw`\\p{L}\\p{N}_`;\nconst BB = `(?:(?<=[${W}])(?![${W}])|(?<![${W}])(?=[${W}]))`;  // точний аналог \\b у Python (Unicode)\nconst B0 = BB, B1 = BB;\nconst rx = (src, flags) => new RegExp(src, flags + 'u');\nconst CAP = String.raw`[А-ЯІЇЄҐ][а-яіїєґ'’-]{2,}`;\nconst IMG = rx(String.raw`!\\S+\\.(?:png|jpg|jpeg|gif)!|!clipboard-\\S+!`, 'g');\nconst SIGN = rx(String.raw`\\n-- ?\\n[\\s\\S]*$`, '');\nconst QUOTE_HDR = rx(String.raw`^.*` + B0 + String.raw`wrote in #note-\\d+:[ \\t]*\\n?`, 'gm');\nconst EMAIL = rx(`[${W}.+-]+@[${W}-]+(?:\\\\.[${W}-]+)+`, 'g');\nconst HANDLE = rx(`(?<![${W}.])@[A-Za-z0-9_]{3,}`, 'g');\nconst URLRX = rx(String.raw`https?://\\S+`, 'g');\nconst DOMAIN = rx(B0 + String.raw`(?:[a-z0-9-]+\\.)+(?:com|net|org|io|ua|us|ai|dev|tech|co|eu|info|biz|me|app|cloud|pl|de|ru)` + B1, 'gi');\nconst CLIENTS = rx(B0 + String.raw`(?:<CLIENT_NAME_A>|<CLIENT_NAME_B>)` + B1, 'gi');\nconst SUF3 = 'ович|евич|йович|ович|ич|івна|ївна|евна|овна|ична|ична', SUF2 = 'ович|евич|йович|ич|івна|ївна|евна|овна';\nconst FIO = rx(B0 + CAP + String.raw`\\s+` + CAP + String.raw`\\s+` + CAP + `(?:${SUF3})` + B1 + '|' + B0 + CAP + String.raw`\\s+` + CAP + `(?:${SUF2})` + B1, 'g');\nconst IP = rx(B0 + String.raw`\\d{1,3}(?:\\.\\d{1,3}){3}` + B1, 'g');\nconst PHONE = rx(`(?<![${W}])` + String.raw`\\+?\\d[\\d\\s().-]{8,}\\d`, 'g');\nconst LOGIN = rx(B0 + String.raw`(?:ms|mdy)[._][a-z0-9][a-z0-9._-]*[a-z0-9]` + B1 + '|' + B0 + String.raw`[a-z][a-z0-9-]{0,20}[._][a-z][a-z0-9._-]{2,30}` + B1, 'gi');\nconst SAFE_DOTTED = rx(String.raw`\\.(?:com|net|org|pdf|png|jpg|docx?|xlsx?|txt|json|csv|zip|exe|msi|local|google|io|ua|ai|tech)$`, 'i');\nconst BIGRAM = rx(B0 + '(' + CAP + ')' + String.raw`\\s+(` + CAP + ')' + B1, 'g');\nconst CAPWORD = rx(B0 + String.raw`[А-ЯІЇЄҐA-Z][а-яіїєґa-z'’-]{2,}` + B1, 'g');\nconst GENERIC_DOMAINS = new Set(['google.com', 'gmail.com', 'microsoft.com', 'office.com', 'zoom.us', 'github.com', 'docs.google.com', 'meet.google.com', 'teams.microsoft.com']);\nconst cp = s => Array.from(s);\nconst cut = (s, n) => cp(s).slice(0, n).join('');\n\nfunction makeCleaner(names, stop) {\n  const hasNames = names.size > 0;\n  const isName = w => {\n    w = w.toLowerCase();\n    const forms = [0, 1, 2, 3].filter(k => w.length - k >= 4).map(k => w.slice(0, w.length - k));\n    if (forms.some(f => stop.has(f))) return false;  // часті слова (Redmine, Acme, Hello ...) іменами не вважаємо\n    return forms.some(f => names.has(f));\n  };\n  const sub = (re, label, text, keep) => text.replace(re, m => (keep && keep(m)) ? m : label);\n  return text => {\n    text = String(text || '').replace(/\\r/g, '');\n    text = text.replace(IMG, '');\n    text = text.replace(SIGN, '');\n    text = text.replace(QUOTE_HDR, '');\n    text = sub(EMAIL, '<EMAIL>', text);\n    text = sub(HANDLE, '<HANDLE>', text);\n    text = sub(URLRX, '<URL>', text);\n    text = sub(DOMAIN, '<DOMAIN>', text, m => GENERIC_DOMAINS.has(m.toLowerCase()));\n    text = sub(CLIENTS, '<CLIENT>', text);\n    text = sub(FIO, '<PERSON>', text);\n    text = sub(IP, '<IP>', text);\n    text = sub(PHONE, '<PHONE>', text);\n    text = sub(LOGIN, '<LOGIN>', text, m => SAFE_DOTTED.test(m));\n    if (hasNames) text = text.replace(CAPWORD, m => isName(m) ? '<PERSON>' : m);\n    text = text.replace(BIGRAM, (m, a, b) => (stop.has(a.toLowerCase()) && stop.has(b.toLowerCase())) ? m : '<PERSON>');\n    return text.replace(/\\n{3,}/g, '\\n\\n').trim();\n  };\n}\n\n// uuid5 (SHA-1), щоб id точок збігались із Python (kb_load.py): uuid.uuid5(NS, str(ticket))\nfunction sha1(bytes) {\n  const rotl = (x, n) => (x << n) | (x >>> (32 - n));\n  const ml = bytes.length * 8, padded = Array.from(bytes); padded.push(0x80);\n  while (padded.length % 64 !== 56) padded.push(0);\n  for (let i = 7; i >= 0; i--) padded.push(i >= 4 ? 0 : (ml >>> (i * 8)) & 255);\n  let h0 = 0x67452301, h1 = 0xEFCDAB89, h2 = 0x98BADCFE, h3 = 0x10325476, h4 = 0xC3D2E1F0;\n  for (let o = 0; o < padded.length; o += 64) {\n    const w = new Array(80);\n    for (let i = 0; i < 16; i++) w[i] = (padded[o + 4 * i] << 24) | (padded[o + 4 * i + 1] << 16) | (padded[o + 4 * i + 2] << 8) | padded[o + 4 * i + 3];\n    for (let i = 16; i < 80; i++) w[i] = rotl(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);\n    let a = h0, b = h1, c = h2, d = h3, e = h4;\n    for (let i = 0; i < 80; i++) {\n      let f, k;\n      if (i < 20) { f = (b & c) | (~b & d); k = 0x5A827999; } else if (i < 40) { f = b ^ c ^ d; k = 0x6ED9EBA1; }\n      else if (i < 60) { f = (b & c) | (b & d) | (c & d); k = 0x8F1BBCDC; } else { f = b ^ c ^ d; k = 0xCA62C1D6; }\n      const t = (rotl(a, 5) + f + e + k + w[i]) | 0; e = d; d = c; c = rotl(b, 30); b = a; a = t;\n    }\n    h0 = (h0 + a) | 0; h1 = (h1 + b) | 0; h2 = (h2 + c) | 0; h3 = (h3 + d) | 0; h4 = (h4 + e) | 0;\n  }\n  return [h0, h1, h2, h3, h4].flatMap(x => [(x >>> 24) & 255, (x >>> 16) & 255, (x >>> 8) & 255, x & 255]);\n}\nconst NS_HEX = '6f1c2b1e0b1a4c579d575a7a1c0a11aa';\nfunction uuid5(name) {\n  const ns = NS_HEX.match(/../g).map(h => parseInt(h, 16));\n  const h = sha1(ns.concat(Array.from(new TextEncoder().encode(name)))).slice(0, 16);\n  h[6] = (h[6] & 0x0f) | 0x50; h[8] = (h[8] & 0x3f) | 0x80;\n  const x = h.map(b => b.toString(16).padStart(2, '0')).join('');\n  return `${x.slice(0, 8)}-${x.slice(8, 12)}-${x.slice(12, 16)}-${x.slice(16, 20)}-${x.slice(20)}`;\n}\n\n// tickets: [{id, subject, description, author:{name}, assigned_to?, category?, journals:[{user:{name}, notes}]}]\nfunction buildRows(tickets, names, stop) {\n  const clean = makeCleaner(names, stop);\n  const rows = [];\n  for (const t of tickets) {\n    const author = (t.author || {}).name;\n    const notes = (t.journals || []).filter(j => String(j.notes || '').trim() && (j.user || {}).name !== author)\n      .map(j => clean(j.notes)).filter(n => cp(n).length >= 15);\n    if (!notes.length) continue;\n    const subject = clean(t.subject), description = cut(clean(t.description), 1500), answer = cut(notes.join('\\n---\\n'), 2000);\n    const text = `Тема: ${subject}\\nОпис: ${description}\\nВідповідь інженера: ${answer}`;\n    rows.push({ ticket: t.id, pid: uuid5(String(t.id)), text: cut(text, 3500), embed_text: cut(text, 3000),\n      category: (t.category || {}).name || '', answer_len: Math.max(...notes.map(n => cp(n).length)) });\n  }\n  return rows;\n}\n\nconst cfg = $('Config').first().json;\nconst allIssues = $('Split Issues').all(), kept = $('Filter Recent').all();\nif (allIssues.length >= Number(cfg.limit) && kept.length === allIssues.length) throw new Error(`Усі ${allIssues.length} останніх закритих заявок оновлені за ${cfg.days_back} дн.: ліміт замалий, частину могло бути пропущено`);\nconst tickets = $('[Redmine] Get Ticket').all().map(i => i.json.issue || i.json).filter(t => t && t.id);\nconst tab = $('[Data Table] Get Names').all().map(i => i.json);\nconst names = new Set(tab.filter(r => r.kind === 'name').map(r => String(r.word).toLowerCase()));\nconst stop = new Set(tab.filter(r => r.kind === 'stop').map(r => String(r.word).toLowerCase()));\n// учасники цих заявок теж вважаються іменами (як у Python: автори, виконавці, автори коментарів)\nfor (const t of tickets) {\n  const who = [(t.author || {}).name, (t.assigned_to || {}).name, ...(t.journals || []).map(j => (j.user || {}).name)];\n  for (const n of who) for (const w of String(n || '').split(/[\\s,]+/)) if (w.length >= 4 && /^\\p{L}/u.test(w)) names.add(w.toLowerCase());\n}\nif (!names.size) throw new Error('таблиця kb_name_tokens порожня');\nconst rows = buildRows(tickets, names, stop).filter(r => r.answer_len >= Number(cfg.min_answer));\nif (!rows.length) return [];\nif (rows.length > 90) throw new Error(`Заявок до завантаження ${rows.length} > 90 (ліміт одного батчу Gemini)`);\nconst requests = rows.map(r => ({ model: 'models/gemini-embedding-001', content: { parts: [{ text: r.embed_text }] }, taskType: 'RETRIEVAL_DOCUMENT', title: 'ticket ' + r.ticket }));\nreturn [{ json: { requests, rows } }];"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1430,
+    0
+   ],
+   "id": "1cf08dee-1988-4b66-bd90-c411d9be84c3",
+   "name": "Code: Anonymize"
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:batchEmbedContents",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "googlePalmApi",
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ requests: $json.requests }) }}",
+    "options": {}
+   },
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    1650,
+    0
+   ],
+   "id": "b17a421b-d57f-41d2-866e-e1857e5c14af",
+   "name": "[Gemini] Embed",
+   "credentials": {
+    "googlePalmApi": {
+     "id": "<GEMINI_CRED>",
+     "name": "<GEMINI_NAME>"
+    }
+   },
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 10000
+  },
+  {
+   "parameters": {
+    "jsCode": "const prev = $('Code: Anonymize').first().json.rows;\nconst emb = $input.first().json.embeddings || [];\nif (emb.length !== prev.length) throw new Error('Embeddings ' + emb.length + ' != rows ' + prev.length);\nconst points = prev.map((r, i) => ({ id: r.pid, vector: emb[i].values, payload: { content: r.text, metadata: { source: 'ticket', ticket: r.ticket, category: r.category, answer_len: r.answer_len } } }));\nreturn [{ json: { points, tickets: prev.map(r => r.ticket) } }];"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1870,
+    0
+   ],
+   "id": "73b9101c-f47d-4113-a374-2ca78c066377",
+   "name": "Code: Build Points"
+  },
+  {
+   "parameters": {
+    "method": "PUT",
+    "url": "http://<QDRANT_HOST>:6333/collections/it_support_kb/points?wait=true",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "qdrantApi",
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ points: $json.points }) }}",
+    "options": {}
+   },
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    2090,
+    0
+   ],
+   "id": "d3df1aeb-0ff5-4680-8b85-5c15814616be",
+   "name": "[Qdrant] Upsert",
+   "credentials": {
+    "qdrantApi": {
+     "id": "<QDRANT_CRED_ID>",
+     "name": "<QDRANT_CRED_NAME>"
+    }
+   }
+  }
+ ],
+ "connections": {
+  "Every Monday 08:00": {
+   "main": [
+    [
+     {
+      "node": "Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Config": {
+   "main": [
+    [
+     {
+      "node": "[Redmine] Get Issues",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Redmine] Get Issues": {
+   "main": [
+    [
+     {
+      "node": "Split Issues",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Split Issues": {
+   "main": [
+    [
+     {
+      "node": "Filter Recent",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Filter Recent": {
+   "main": [
+    [
+     {
+      "node": "[Redmine] Get Ticket",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Redmine] Get Ticket": {
+   "main": [
+    [
+     {
+      "node": "[Data Table] Get Names",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Data Table] Get Names": {
+   "main": [
+    [
+     {
+      "node": "Code: Anonymize",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Code: Anonymize": {
+   "main": [
+    [
+     {
+      "node": "[Gemini] Embed",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Gemini] Embed": {
+   "main": [
+    [
+     {
+      "node": "Code: Build Points",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Code: Build Points": {
+   "main": [
+    [
+     {
+      "node": "[Qdrant] Upsert",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1",
+  "timezone": "Europe/Kyiv"
+ }
+}

@@ -69,7 +69,7 @@ def cmd_run():
     cfg = {"rm": (S["test_redmine_cred"]["id"], S["test_redmine_cred"]["name"]), "gem": S["gemini_cred"], "ldap": (S["ldap_cred"]["id"], S["ldap_cred"]["name"]),
            "google": (S["google_cred"]["id"], S["google_cred"]["name"]), "glpi": (S["glpi_cred"]["id"], S["glpi_cred"]["name"], S["glpi_url"])}
     tools = BT.build_all(cfg)
-    tools["advisor-similar"] = BT.qdrant_search_tool("[PILOT] Advisor Tool: Similar Tickets", COLL, S["gemini_cred"], None, "Similar Tickets (eval)", "eval")
+    tools["advisor-similar"] = BT.qdrant_search_tool("Радник (інструмент): Similar Tickets", COLL, S["gemini_cred"], None, "Similar Tickets (eval)", "eval")
     created = []
     try:
         ids = {}

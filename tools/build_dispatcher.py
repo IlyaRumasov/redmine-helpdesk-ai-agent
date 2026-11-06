@@ -1,6 +1,6 @@
-"""Збирає workflows/support-agent-dispatcher.json (флоу «Support Agent: Dispatcher»).
+"""Збирає workflows/support-agent-dispatcher.json (флоу «Автоматизатор: Dispatcher»).
 
-Кожні 5 хв бере нові нерозподілені заявки HelpDesk, які ще не обробляли:
+Кожні 2 хв бере нові нерозподілені заявки HelpDesk, які ще не обробляли:
   1) правила (регулярки) визначають тип;
   2) де правила мовчать, Gemini (gemini-3.8-flash) повертає тип, логіни та адреси строгим JSON;
   3) заявки передаються потрібному інструменту (під-воркфлоу) з підказкою ai; інструмент сам перевіряє все в системах.
@@ -17,22 +17,27 @@ ROOT = Path(__file__).resolve().parent.parent
 MODEL = "models/gemini-3.8-flash"
 
 RULES_JS = r"""
-// Нові нерозподілені заявки без запису в аудиті; тип за правилами, решта -> ІІ
+// Нові заявки без запису в аудиті: вільні -> тип за правилами (решта -> ІІ), вже взяті інженером -> лише аудит
 const seen = new Set($('[Data Table] Get Processed').all().map(i => String(i.json.ticket_id)).filter(Boolean));
 // заявки авторів поза списком координаторів не чіпаємо взагалі (їхній текст не йде ні в інструменти, ні в ІІ)
 const allowed = String($('Config').first().json.allowed_author_ids).split(',').map(s => s.trim()).filter(Boolean);
+const everyone = allowed.includes('*');  // '*' у Config = заявки від усіх авторів (тест)
 // нова заявка в Redmine одразу призначена групі «IT Адміни» (admins_group_id): вважаємо її нерозподіленою, поки не взяв інженер
 const adminsGroup = String($('Config').first().json.admins_group_id);
-const tickets = ($input.first().json.issues || []).filter(t => (!t.assigned_to || String(t.assigned_to.id) === adminsGroup) && !seen.has(String(t.id))
-  && allowed.includes(String(t.author && t.author.id)));
+const tickets = ($input.first().json.issues || []).filter(t => !seen.has(String(t.id)) && (everyone || allowed.includes(String(t.author && t.author.id))));
+// заявку вже взяв інженер: інструментам не віддаємо, лише в аудит як «other» (via taken), щоб радник встиг дати підказку; беремо свіжі, за останні 24 год
+const fresh = Date.now() - 24 * 3600000;
+const isFree = t => (!t.assigned_to || String(t.assigned_to.id) === adminsGroup) && t.status && t.status.id === 1;
 const known = [], unknown = [];
 for (const t of tickets) {
+  if (!isFree(t)) { if (Date.parse(t.created_on) >= fresh) known.push({ ...t, route: 'other', via: 'taken' }); continue; }
   const text = `${t.subject}\n${t.description || ''}`.toLowerCase();
   let type = 'other';
   if (/(розблок|разблок|unlock)/.test(text) && /(redmine|редмайн)/.test(text)) type = 'redmine_unlock';
   else if (/змін\S*\s+особист\S*\s+пошт/.test(text)) type = 'mail_change';
-  else if (/(гостьов|guest acc|guest\.google|google|гугл|gmail)/.test(text)
-           && /(2fa|2-step|двоетап|двохетап|двофактор|двухфакт|подвійн|backup|резервн|код|sign-in settings|верифікац|не може увійти|втрат\S* доступ|відновлен\S* доступ)/.test(text)) type = 'guest_codes';
+  else if ((/(гостьов|guest acc|guest\.google)/.test(text)
+            && /(2fa|2-step|двоетап|двохетап|двофактор|двухфакт|подвійн|backup|резервн|код|sign-in settings|верифікац|не може увійти|втрат\S* доступ|відновлен\S* доступ)/.test(text))
+           || (/(google|гугл|gmail)/.test(text) && /(2fa|2-step|двоетап|двохетап|двофактор|двухфакт|sign-in settings|backup code|резервн\S* код)/.test(text))) type = 'guest_codes';  // «google» + загальні слова («код», «резервні копії») помилково ловили заявки про розгортання
   else if (/(змін\S*\s+парол|скин\S*\s+парол|парол\S*\s+vpn)/.test(text)
            || (/(заблок|розблок|locked out|account locked)/.test(text) && !/(redmine|редмайн|google|гугл|gmail|rivneshare|1с|1c)/.test(text))) type = 'password_reset';
   (type === 'other' ? unknown : known).push({ ...t, route: type, via: 'rules' });
@@ -116,8 +121,8 @@ def build(rm_id, rm_name, gem_id, gem_name, table_id, unlock_id, ad_id, guest_id
         "mode": "once", "options": {"waitForSubWorkflow": True}}, x, y, ver=1.2, onError="continueRegularOutput")
 
     node("Sticky Note", "n8n-nodes-base.stickyNote", {"content": (
-        "## Support Agent: Dispatcher\n"
-        "Кожні 5 хв: нові нерозподілені заявки HelpDesk без запису в аудиті.\n"
+        "## Автоматизатор: Dispatcher\n"
+        "Кожні 2 хв: нові нерозподілені заявки HelpDesk без запису в аудиті.\n"
         "1. Правила визначають тип. 2. Де правила мовчать, Gemini (лише класифікація, строгий JSON).\n"
         "3. Передає заявки інструментам (під-воркфлоу) з підказкою ai; кожен інструмент сам перевіряє AD/Redmine/Google і веде аудит.\n"
         "«other» пишеться в аудит, щоб ІІ не класифікував її вдруге; таку заявку беруть люди.\n"
@@ -134,7 +139,7 @@ def build(rm_id, rm_name, gem_id, gem_name, table_id, unlock_id, ad_id, guest_id
     node("[Data Table] Get Processed", "n8n-nodes-base.dataTable", {"resource": "row", "operation": "get", "dataTableId": table,
          "returnAll": True, "matchType": "anyCondition", "filters": {}}, 440, 0, ver=1.1, alwaysOutputData=True)
     node("[Redmine] Get New Tickets", "n8n-nodes-redmine.redmine", {"operation": "getAll", "returnAll": True, "filters": {
-         "project_id": cfgv("project_id"), "tracker_id": cfgv("tracker_id"), "status_id": "1"}, "options": {}}, 660, 0, credentials=rmc, executeOnce=True)
+         "project_id": cfgv("project_id"), "tracker_id": cfgv("tracker_id"), "status_id": "open"}, "options": {}}, 660, 0, credentials=rmc, executeOnce=True)
     node("Code: Rules Classify", "n8n-nodes-base.code", {"jsCode": RULES_JS.strip()}, 880, 0, ver=2)
     node("Need AI?", "n8n-nodes-base.if", {**cond("c1", "={{ $json.unknown.length > 0 }}"), "options": {}}, 1100, 0, ver=2.2)
     node("AI: Classify Tickets", "@n8n/n8n-nodes-langchain.chainLlm", {"promptType": "define", "text": "=" + PROMPT + "{{ $json.prompt_batch }}",
@@ -168,7 +173,7 @@ def build(rm_id, rm_name, gem_id, gem_name, table_id, unlock_id, ad_id, guest_id
     link("Gemini", "AI: Classify Tickets", 0, 0, "ai_languageModel")
     for k, n in enumerate(["Tool: Redmine Unlock", "Tool: AD Account & Personal Mail", "Tool: Google Guest Access", "[Data Table] Log Other"]):
         link("Route by Tool", n, k)
-    return {"name": "Support Agent: Dispatcher", "nodes": nodes, "connections": conn, "settings": {"executionOrder": "v1"}}
+    return {"name": "Автоматизатор: Dispatcher", "nodes": nodes, "connections": conn, "settings": {"executionOrder": "v1"}}
 
 
 if __name__ == "__main__":

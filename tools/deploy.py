@@ -17,7 +17,7 @@ LDAP = tuple(S["ldap_cred"].values())
 TABLE = S["prod_table"]  # бойова таблиця аудиту
 COORDINATORS = (Path(__file__).resolve().parent / "coordinators.txt").read_text().strip()  # id координаторів, не комітити
 CONFIG = {"dry_run": True, "project_id": "<PROJECT_ID>", "tracker_id": "<TRACKER_ID>", "allowed_author_ids": COORDINATORS, "mail_from": S.get("mail_from", "<MAIL_FROM>")}
-PREFIX = "[PILOT] "
+PREFIX = ""
 
 
 def configure(wf):

@@ -1,4 +1,4 @@
-"""Збирає workflows/support-agent-google-guest-apply.json (флоу «Support Agent: Google Guest Apply»).
+"""Збирає workflows/support-agent-google-guest-apply.json (флоу «Автоматизатор: Google Guest Apply»).
 
 Виконує видачу доступу до гостьового акаунта Google, яку підготував флоу Google Guest Access (аудит: kind guest_access,
 outcome awaiting_approval), після коментаря «Погоджую» від учасника «IT Адміни» (не автора заявки):
@@ -133,16 +133,49 @@ return { json: { ok: true, to: plan.work_mail, has_codes: !!plan.send_codes, pw_
 """
 
 REPORT_JS = r"""
+const saluteOf = t => {  // як звертається автор заявки, якою мовою пише і як його звати
+  const desc = String(t.description || '');
+  const strip = x => String(x || '').replace(/https?:\/\/\S+|\S+@\S+|\b[\w-]+(?:[._][\w-]+)+\b/g, ' ');
+  const txt = strip(desc).length >= 15 ? strip(desc) : strip(String(t.subject || '') + ' ' + desc);
+  const cyr = (txt.match(/[\u0400-\u04FF]/g) || []).length, lat = (txt.match(/[A-Za-z]/g) || []).length;
+  const lang = lat >= 8 && cyr * 10 < lat ? 'en' : 'uk';  // англійська, якщо кирилиці майже немає
+  const s = (desc || String(t.subject || '')).toLowerCase().replace(/^[^\p{L}\p{N}]+/u, '').slice(0, 80);
+  let hi;
+  if (lang === 'en') hi = /^good\s+morning/.test(s) ? 'Good morning' : /^good\s+afternoon/.test(s) ? 'Good afternoon' : /^good\s+evening/.test(s) ? 'Good evening' : /^hi\b/.test(s) ? 'Hi' : 'Hello';
+  else if (/^(доброго\s+ранку|добрий\s+ранок|доброе\s+утро)/.test(s)) hi = 'Доброго ранку';
+  else if (/^(добрий\s+день|доброго\s+дня|добрый\s+день)/.test(s)) hi = 'Добрий день';
+  else if (/^(добрий\s+вечір|доброго\s+вечора|добрый\s+вечер)/.test(s)) hi = 'Добрий вечір';
+  else if (/^(вітаю|здрастуйте|здравствуйте)/.test(s)) hi = 'Вітаю';
+  else hi = 'Привіт';
+  const nm = String((t.author && t.author.name) || '').trim().split(/\s+/);
+  const name = nm.length === 2 && /^[\p{L}'’-]+$/u.test(nm[1]) ? nm[1] : '';  // у Redmine ім'я у форматі «Прізвище Ім'я»; інші формати без імені
+  return { lang, hi, name };
+};
+const _kh = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Kyiv', hour: 'numeric', hourCycle: 'h23' }).format(new Date()));
+// звертання, мова й ім'я автора: з Code: Parse Tickets (флоу-інструменти) або з тексту заявки (флоу Apply)
+const _salOf = id => {
+  try { const p = $('Code: Parse Tickets').all().find(x => String(x.json.ticket_id) === String(id)); if (p && p.json.salute) return p.json.salute; } catch (e) {}
+  try { for (const { json: h } of $('[Redmine] Get Ticket History').all()) { const i = h.issue || h; if (String(i.id) === String(id)) return saluteOf(i); } } catch (e) {}
+  return { lang: 'uk', hi: 'Привіт', name: '' };
+};
+// лише для публічних відповідей людям (укр. або англ. за мовою заявки); приватні нотатки для адміністраторів без привітань
+const polite = (uk, en, id) => {
+  const s = _salOf(id), nm = s.name ? ', ' + s.name : '';
+  return s.lang === 'en'
+    ? `${s.hi}${nm}! Thank you for your request.\n\n${en || uk}\n\n${_kh < 18 ? 'Have a nice day!' : 'Have a nice evening!'}`
+    : `${s.hi}${nm}! Дякуємо за звернення.\n\n${uk}\n\n${_kh < 18 ? 'Гарного дня!' : 'Гарного вечора!'}`;
+};
 const cfg = $('Config').first().json;
 return $input.all().map(({ json: j }) => {
   const p = j.plan || {};
   const failed = j.done === 'no';
-  let note, outcome, close = false, assign = false, details = j.reason || '';
+  let note, noteEn = '', outcome, close = false, assign = false, details = j.reason || '';
   if (j.action === 'apply' && !failed) {
     outcome = 'applied'; close = true;
     details = p.send_codes ? 'тимчасовий пароль і резервні коди надіслано' : 'тимчасовий пароль надіслано';
-    note = `Вітаю. ${p.send_codes ? 'Тимчасовий пароль і резервні коди' : 'Тимчасовий пароль'} для гостьового акаунту ${p.guest} надіслано на робочу пошту ${p.work_mail}`
+    note = `${p.send_codes ? 'Тимчасовий пароль і резервні коди' : 'Тимчасовий пароль'} для гостьового акаунту ${p.guest} надіслано на робочу пошту ${p.work_mail}`
       + `${p.send_codes ? ' окремими листами' : ''}. Увійдіть під повною адресою гостьового акаунту, задайте новий пароль${p.send_codes ? ', на другому кроці оберіть «Інший спосіб» -> «Резервний код»' : ''} і одразу налаштуйте двоетапну перевірку.`;
+    noteEn = `${p.send_codes ? 'A temporary password and backup codes' : 'A temporary password'} for the guest account ${p.guest} ${p.send_codes ? 'have' : 'has'} been sent to your work address ${p.work_mail}${p.send_codes ? ' in separate emails' : ''}. Sign in with the full guest account address, set a new password${p.send_codes ? ', and at the second step choose "Try another way" -> "Enter a backup code"' : ''}, then set up 2-Step Verification right away.`;
   } else if (j.action === 'cancel') {
     outcome = 'cancelled';
     note = `Агент: видачу доступу до гостьового акаунту скасовано (${details}). Якщо вона ще потрібна, створіть нову заявку.`;
@@ -155,7 +188,7 @@ return $input.all().map(({ json: j }) => {
     note = `DRY RUN (змін не внесено). Агент ${j.action === 'apply' ? 'видав би доступ до ' + p.guest + ' (' + (p.send_codes ? 'пароль + коди' : 'пароль') + ') на ' + p.work_mail : 'не виконав би видачу. Причина: ' + details}.`;
     close = false; assign = false;
   }
-  return { json: { ticket_id: j.ticket_id, kind: 'guest_access', note, private: j.dry_run || outcome !== 'applied', close, assign,
+  return { json: { ticket_id: j.ticket_id, kind: 'guest_access', note: (j.dry_run || outcome !== 'applied') ? note : polite(note, noteEn, j.ticket_id), private: j.dry_run || outcome !== 'applied', close, assign,
                    logins: p.login || '', outcome: j.dry_run ? 'dry_' + outcome : outcome, details, payload: JSON.stringify(p), dry_run: j.dry_run, at: new Date().toISOString() } };
 });
 """
@@ -192,10 +225,11 @@ def build(rm_id, rm_name, g_id, g_name, smtp_id, smtp_name, table_id):
         "fromEmail": "={{ $('Config').first().json.mail_from }}", "toEmail": "={{ $('Code: Build Mails').item.json.to }}",
         "subject": "={{ $('Code: Build Mails').item.json.%s }}" % subj, "emailFormat": "text",
         "text": "={{ $('Code: Build Mails').item.json.%s }}" % text, "options": {"appendAttribution": False}},
-        x, y, ver=2.1, credentials=smtp, onError="continueErrorOutput")
+        x, y, ver=2.1, credentials=smtp, onError="continueErrorOutput",
+        retryOnFail=True, maxTries=4, waitBetweenTries=20000)  # SMTP-релей Google інколи відповідає 421 «Try again later»
 
     node("Sticky Note", "n8n-nodes-base.stickyNote", {"content": (
-        "## Support Agent: Google Guest Apply\n"
+        "## Автоматизатор: Google Guest Apply\n"
         "Кожні 5 хв перевіряє заявки, для яких флоу Google Guest Access підготував видачу доступу (аудит: guest_access / awaiting_approval).\n"
         "Після коментаря «Погоджую» від учасника «IT Адміни» (не автора заявки), за умови що гість у Google той самий:\n"
         "ставить тимчасовий пароль (зі зміною при вході) і, якщо акаунт заблоковано без 2FA, генерує резервні коди; два листи на <логін>@example.com.\n"
@@ -234,6 +268,7 @@ def build(rm_id, rm_name, g_id, g_name, smtp_id, smtp_name, table_id):
     node("[Google] Generate Codes", "n8n-nodes-base.httpRequest",
          {**gapi("POST", "=" + API + "{{ encodeURIComponent($('Code: Generate Secrets').item.json.plan.guest) }}/verificationCodes/generate"), "options": {}},
          2640, -320, ver=4.2, credentials=gc, onError="continueErrorOutput")
+    node("Wait: Codes Ready", "n8n-nodes-base.wait", {"amount": 10, "unit": "seconds"}, 2750, -320, ver=1.1)  # Google віддає список кодів із затримкою: без паузи список порожній
     node("[Google] List Codes", "n8n-nodes-base.httpRequest",
          gapi("GET", "=" + API + "{{ encodeURIComponent($('Code: Generate Secrets').item.json.plan.guest) }}/verificationCodes"),
          2860, -320, ver=4.2, credentials=gc, onError="continueErrorOutput")
@@ -263,7 +298,7 @@ def build(rm_id, rm_name, g_id, g_name, smtp_id, smtp_name, table_id):
                  ("Code: Match Pending", "[Google] Get Guest"), ("[Google] Get Guest", "[Redmine] Get Ticket History"),
                  ("[Redmine] Get Ticket History", "[Redmine] Get IT Admins"), ("[Redmine] Get IT Admins", "Code: Decide Apply"),
                  ("Code: Decide Apply", "Apply Now?"), ("Code: Generate Secrets", "[Google] Set Temp Password"),
-                 ("[Google] Generate Codes", "[Google] List Codes"), ("[Google] List Codes", "Code: Build Mails"),
+                 ("[Google] Generate Codes", "Wait: Codes Ready"), ("Wait: Codes Ready", "[Google] List Codes"), ("[Google] List Codes", "Code: Build Mails"),
                  ("Code: Build Mails", "Mails Ready?"), ("Mark Done", "Merge Results"), ("Merge Results", "Code: Build Report"),
                  ("Code: Build Report", "[Redmine] Update Ticket"), ("[Redmine] Update Ticket", "[Data Table] Log Result")]:
         link(a, b)
@@ -288,7 +323,7 @@ def build(rm_id, rm_name, g_id, g_name, smtp_id, smtp_name, table_id):
     link("Mark Failed", "Merge Results", 0, 1)
     settings = {"executionOrder": "v1", "saveDataSuccessExecution": "none", "saveDataErrorExecution": "none",
                 "saveManualExecutions": False, "saveExecutionProgress": False}
-    return {"name": "Support Agent: Google Guest Apply", "nodes": nodes, "connections": conn, "settings": settings}
+    return {"name": "Автоматизатор: Google Guest Apply", "nodes": nodes, "connections": conn, "settings": settings}
 
 
 if __name__ == "__main__":

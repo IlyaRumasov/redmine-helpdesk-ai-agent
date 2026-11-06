@@ -29,5 +29,5 @@ def to_subworkflow(wf):
     conn[TRIGGER] = {"main": [[{"node": "Config", "type": "main", "index": 0}]]}
     conn[TAKE] = {"main": [[{"node": "Code: Parse Tickets", "type": "main", "index": 0}]]}
     wf["nodes"], wf["connections"] = nodes, conn
-    wf["name"] = wf["name"] + " (tool)"
+    wf["name"] = wf["name"] + " (інструмент)"
     return wf

@@ -1,0 +1,642 @@
+{
+ "name": "Автоматизатор: Redmine Group Apply",
+ "nodes": [
+  {
+   "parameters": {
+    "content": "## Автоматизатор: Redmine Group Apply\nКожні 5 хв перевіряє заявки, для яких флоу Redmine Group підготував додавання до групи (аудит: group_add / awaiting_approval).\nПісля коментаря «Погоджую» від учасника «IT Адміни» (не автора) додає людей до групи, перевіряє членство,\nвідповідає авторові й закриває задачу. Закрита задача або 7 днів без підтвердження = скасовано.\n\n**DRY_RUN** (Config): true = нічого не змінює.",
+    "height": 200,
+    "width": 640
+   },
+   "type": "n8n-nodes-base.stickyNote",
+   "typeVersion": 1,
+   "position": [
+    -200,
+    -300
+   ],
+   "id": "31e62179-851e-4672-be79-30a241d422b8",
+   "name": "Sticky Note"
+  },
+  {
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "field": "minutes",
+       "minutesInterval": 5
+      }
+     ]
+    }
+   },
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.2,
+   "position": [
+    0,
+    0
+   ],
+   "id": "606a94d4-659c-4bed-9f1f-01a53038d10e",
+   "name": "Every 5 Min"
+  },
+  {
+   "parameters": {
+    "assignments": {
+     "assignments": [
+      {
+       "id": "a1",
+       "name": "dry_run",
+       "value": true,
+       "type": "boolean"
+      },
+      {
+       "id": "a2",
+       "name": "approve_words",
+       "value": "погоджую,підтверджую",
+       "type": "string"
+      },
+      {
+       "id": "a3",
+       "name": "pending_days",
+       "value": 7,
+       "type": "number"
+      },
+      {
+       "id": "a4",
+       "name": "resolved_status_id",
+       "value": "17",
+       "type": "string"
+      },
+      {
+       "id": "a5",
+       "name": "admins_group_id",
+       "value": "35",
+       "type": "string"
+      },
+      {
+       "id": "a6",
+       "name": "redmine_url",
+       "value": "<REDMINE_URL>",
+       "type": "string"
+      },
+      {
+       "id": "a7",
+       "name": "group_id",
+       "value": "41",
+       "type": "string"
+      }
+     ]
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-base.set",
+   "typeVersion": 3.4,
+   "position": [
+    220,
+    0
+   ],
+   "id": "68a01583-8012-446d-b56e-82a457ca2ac8",
+   "name": "Config"
+  },
+  {
+   "parameters": {
+    "resource": "row",
+    "operation": "get",
+    "dataTableId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "<AUDIT_TABLE>"
+    },
+    "returnAll": true,
+    "matchType": "anyCondition",
+    "filters": {}
+   },
+   "type": "n8n-nodes-base.dataTable",
+   "typeVersion": 1.1,
+   "position": [
+    440,
+    0
+   ],
+   "id": "46b1f57c-efdf-4965-a53f-f44f52332cc9",
+   "name": "[Data Table] Get Log",
+   "alwaysOutputData": true
+  },
+  {
+   "parameters": {
+    "jsCode": "const cfg = $('Config').first().json;\nconst dry = cfg.dry_run === true || cfg.dry_run === 'true';\n// у DRY RUN дивимось на найновіший запис (і сухий, і бойовий), у бойовому режимі лише бойові\nconst last = {}, newest = {};\nfor (const { json: r } of $input.all()) {\n  if (!r.ticket_id) continue;\n  if (!newest[r.ticket_id] || String(r.at) > String(newest[r.ticket_id].at)) newest[r.ticket_id] = r;\n  if (r.dry_run === true) continue;\n  if (!last[r.ticket_id] || String(r.at) > String(last[r.ticket_id].at)) last[r.ticket_id] = r;\n}\nconst out = [];\nfor (const r of Object.values(dry ? newest : last)) {\n  if (r.kind !== 'group_add' || r.outcome !== 'awaiting_approval') continue;\n  let p;\n  try { p = JSON.parse(r.payload); } catch (e) { continue; }\n  out.push({ json: { ticket_id: r.ticket_id, plan: p, users: p.users, prepared_at: r.at, dry_run: dry } });\n}\nreturn out;"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    660,
+    0
+   ],
+   "id": "bd7367a4-ca15-4322-acbf-8e3c538f233a",
+   "name": "Code: Match Pending"
+  },
+  {
+   "parameters": {
+    "operation": "get",
+    "issueId": "={{ $json.ticket_id }}",
+    "include": [
+     "journals"
+    ],
+    "options": {}
+   },
+   "type": "n8n-nodes-redmine.redmine",
+   "typeVersion": 1,
+   "position": [
+    880,
+    0
+   ],
+   "id": "d60864c9-5c1e-4553-b567-51b99c3d4e6b",
+   "name": "[Redmine] Get Ticket History",
+   "credentials": {
+    "redmineApi": {
+     "id": "<REDMINE_CRED>",
+     "name": "Redmine <ENV> account"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "resource": "user",
+    "operation": "getAll",
+    "returnAll": true,
+    "filters": {
+     "group_id": "={{ $('Config').first().json.admins_group_id }}",
+     "status": "1"
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-redmine.redmine",
+   "typeVersion": 1,
+   "position": [
+    1100,
+    0
+   ],
+   "id": "f9f66607-63bb-4aaa-a3bf-929003b61395",
+   "name": "[Redmine] Get IT Admins",
+   "credentials": {
+    "redmineApi": {
+     "id": "<REDMINE_CRED>",
+     "name": "Redmine <ENV> account"
+    }
+   },
+   "executeOnce": true,
+   "alwaysOutputData": true
+  },
+  {
+   "parameters": {
+    "jsCode": "const cfg = $('Config').first().json;\nconst words = String(cfg.approve_words).toLowerCase().split(',').map(s => s.trim()).filter(Boolean);\nconst maxAge = Number(cfg.pending_days) * 86400000;\nconst admins = new Set((($('[Redmine] Get IT Admins').first().json.users) || []).map(u => String(u.id)));\nconst pend = $('Code: Match Pending').all();\nconst hist = $('[Redmine] Get Ticket History').all();\nconst out = [];\npend.forEach(({ json: t }, i) => {\n  const r = { ...t, action: 'escalate', reason: '' };\n  const h = hist[i] && hist[i].json || {};\n  const issue = h.issue || h;\n  if (!issue.id) { out.push({ json: { ...r, reason: 'не вдалося прочитати заявку' } }); return; }\n  const author = String(issue.author && issue.author.id);\n  if ((issue.status && issue.status.is_closed) || ['17', '21'].includes(String(issue.status && issue.status.id))) {\n    out.push({ json: { ...r, action: 'cancel', reason: 'задачу закрито без підтвердження' } }); return;\n  }\n  const isWord = n => words.includes(String(n || '').trim().toLowerCase().replace(/[.!\\s]+$/, ''));\n  const notes = (issue.journals || []).filter(x => String(x.created_on) > String(t.prepared_at) && isWord(x.notes));\n  const ok = notes.filter(x => admins.has(String(x.user && x.user.id)) && String(x.user.id) !== author);\n  if (!ok.length) {\n    if (notes.length) { out.push({ json: { ...r, reason: `підтвердження написав ${notes[0].user.name}, але він не з «IT Адміни» або є автором заявки` } }); return; }\n    if (Date.now() - Date.parse(t.prepared_at) > maxAge) { out.push({ json: { ...r, action: 'cancel', reason: `немає підтвердження понад ${cfg.pending_days} днів` } }); return; }\n    return;  // ще чекаємо\n  }\n  out.push({ json: { ...r, action: 'apply', approved_by: ok[0].user.name } });\n});\nreturn out;"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1320,
+    0
+   ],
+   "id": "816c42ca-ab81-4e52-a4bd-34b4403dc10c",
+   "name": "Code: Decide Apply"
+  },
+  {
+   "parameters": {
+    "conditions": {
+     "options": {
+      "caseSensitive": true,
+      "leftValue": "",
+      "typeValidation": "strict",
+      "version": 2
+     },
+     "conditions": [
+      {
+       "id": "c",
+       "leftValue": "={{ $json.action === 'apply' && !$json.dry_run }}",
+       "rightValue": "",
+       "operator": {
+        "type": "boolean",
+        "operation": "true",
+        "singleValue": true
+       }
+      }
+     ],
+     "combinator": "and"
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.2,
+   "position": [
+    1540,
+    0
+   ],
+   "id": "43bd35f9-29e2-4710-859c-befac747d567",
+   "name": "Apply Now?"
+  },
+  {
+   "parameters": {
+    "fieldToSplitOut": "users",
+    "include": "allOtherFields",
+    "options": {}
+   },
+   "type": "n8n-nodes-base.splitOut",
+   "typeVersion": 1,
+   "position": [
+    1760,
+    -120
+   ],
+   "id": "d6494c03-f0b2-42b1-a8a0-e3e508292748",
+   "name": "Split Out Users"
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $('Config').first().json.redmine_url + '/groups/' + $('Config').first().json.group_id + '/users.json' }}",
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpHeaderAuth",
+    "options": {
+     "response": {
+      "response": {
+       "fullResponse": true,
+       "neverError": true
+      }
+     }
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ user_id: $json.users.id }) }}"
+   },
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    1980,
+    -120
+   ],
+   "id": "f3e00680-5412-470c-af83-c4daea3284ed",
+   "name": "[Redmine] Add To Group",
+   "credentials": {
+    "httpHeaderAuth": {
+     "id": "<REDMINE_HTTP_CRED>",
+     "name": "Redmine HTTP header auth"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "method": "GET",
+    "url": "={{ $('Config').first().json.redmine_url + '/users/' + $('Split Out Users').item.json.users.id + '.json?include=groups' }}",
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpHeaderAuth",
+    "options": {
+     "response": {
+      "response": {
+       "fullResponse": true,
+       "neverError": true
+      }
+     }
+    }
+   },
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    2200,
+    -120
+   ],
+   "id": "8925159f-7db2-4dff-a415-d06a8ae21623",
+   "name": "[Redmine] Verify Membership",
+   "credentials": {
+    "httpHeaderAuth": {
+     "id": "<REDMINE_HTTP_CRED>",
+     "name": "Redmine HTTP header auth"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "numberInputs": 2
+   },
+   "type": "n8n-nodes-base.merge",
+   "typeVersion": 3.2,
+   "position": [
+    2420,
+    0
+   ],
+   "id": "c4400324-3f69-4cf0-a642-32f7ac302231",
+   "name": "Merge Results"
+  },
+  {
+   "parameters": {
+    "jsCode": "const saluteOf = t => {  // як звертається автор заявки, якою мовою пише і як його звати\n  const desc = String(t.description || '');\n  const strip = x => String(x || '').replace(/https?:\\/\\/\\S+|\\S+@\\S+|\\b[\\w-]+(?:[._][\\w-]+)+\\b/g, ' ');\n  const txt = strip(desc).length >= 15 ? strip(desc) : strip(String(t.subject || '') + ' ' + desc);\n  const cyr = (txt.match(/[\\u0400-\\u04FF]/g) || []).length, lat = (txt.match(/[A-Za-z]/g) || []).length;\n  const lang = lat >= 8 && cyr * 10 < lat ? 'en' : 'uk';  // англійська, якщо кирилиці майже немає\n  const s = (desc || String(t.subject || '')).toLowerCase().replace(/^[^\\p{L}\\p{N}]+/u, '').slice(0, 80);\n  let hi;\n  if (lang === 'en') hi = /^good\\s+morning/.test(s) ? 'Good morning' : /^good\\s+afternoon/.test(s) ? 'Good afternoon' : /^good\\s+evening/.test(s) ? 'Good evening' : /^hi\\b/.test(s) ? 'Hi' : 'Hello';\n  else if (/^(доброго\\s+ранку|добрий\\s+ранок|доброе\\s+утро)/.test(s)) hi = 'Доброго ранку';\n  else if (/^(добрий\\s+день|доброго\\s+дня|добрый\\s+день)/.test(s)) hi = 'Добрий день';\n  else if (/^(добрий\\s+вечір|доброго\\s+вечора|добрый\\s+вечер)/.test(s)) hi = 'Добрий вечір';\n  else if (/^(вітаю|здрастуйте|здравствуйте)/.test(s)) hi = 'Вітаю';\n  else hi = 'Привіт';\n  const nm = String((t.author && t.author.name) || '').trim().split(/\\s+/);\n  const name = nm.length === 2 && /^[\\p{L}'’-]+$/u.test(nm[1]) ? nm[1] : '';  // у Redmine ім'я у форматі «Прізвище Ім'я»; інші формати без імені\n  return { lang, hi, name };\n};\nconst _kh = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Kyiv', hour: 'numeric', hourCycle: 'h23' }).format(new Date()));\n// звертання, мова й ім'я автора: з Code: Parse Tickets (флоу-інструменти) або з тексту заявки (флоу Apply)\nconst _salOf = id => {\n  try { const p = $('Code: Parse Tickets').all().find(x => String(x.json.ticket_id) === String(id)); if (p && p.json.salute) return p.json.salute; } catch (e) {}\n  try { for (const { json: h } of $('[Redmine] Get Ticket History').all()) { const i = h.issue || h; if (String(i.id) === String(id)) return saluteOf(i); } } catch (e) {}\n  return { lang: 'uk', hi: 'Привіт', name: '' };\n};\n// лише для публічних відповідей людям (укр. або англ. за мовою заявки); приватні нотатки для адміністраторів без привітань\nconst polite = (uk, en, id) => {\n  const s = _salOf(id), nm = s.name ? ', ' + s.name : '';\n  return s.lang === 'en'\n    ? `${s.hi}${nm}! Thank you for your request.\\n\\n${en || uk}\\n\\n${_kh < 18 ? 'Have a nice day!' : 'Have a nice evening!'}`\n    : `${s.hi}${nm}! Дякуємо за звернення.\\n\\n${uk}\\n\\n${_kh < 18 ? 'Гарного дня!' : 'Гарного вечора!'}`;\n};\n\nconst cfg = $('Config').first().json;\nconst split = (() => { try { return $('Split Out Users').all(); } catch (e) { return []; } })();\nconst post = (() => { try { return $('[Redmine] Add To Group').all(); } catch (e) { return []; } })();\nconst live = {}, out = [];\nlet k = 0;\nfor (const { json: j } of $input.all()) {\n  if (j.action) { out.push(j); continue; }   // не бойове додавання: сухий запуск, скасування, ескалація\n  const s = split[k].json, p = post[k].json; k++;\n  const member = ((((j.body || {}).user) || {}).groups || []).some(x => String(x.id) === String(cfg.group_id));\n  const t = live[s.ticket_id] = live[s.ticket_id] || { ...s, ok: [], bad: [] };\n  if (member) t.ok.push(s.users.name); else t.bad.push(`${s.users.name} (код ${p.statusCode})`);\n}\nconst rows = out.map(j => {\n  const p = j.plan || {}, names = (p.users || []).map(u => u.name).join(', ');\n  let note, outcome, close = false, assign = false, details = j.reason || '';\n  if (j.action === 'apply') {  // сухий запуск\n    outcome = 'dry_applied'; details = names;\n    note = `DRY RUN (змін не внесено). Агент додав би до групи «${p.group_name}»: ${names}.`;\n  } else if (j.action === 'cancel') {\n    outcome = j.dry_run ? 'dry_cancelled' : 'cancelled';\n    note = `Агент: додавання до групи скасовано (${details}). Якщо воно ще потрібне, створіть нову заявку.`;\n  } else {\n    outcome = j.dry_run ? 'dry_escalate' : 'escalate'; assign = !j.dry_run;\n    note = `Агент: додавання до групи не виконано. Причина: ${details}. Потрібна перевірка людиною.`;\n  }\n  return { ticket_id: j.ticket_id, note, private: true, close, assign, logins: names, outcome, details, payload: JSON.stringify(p), dry_run: j.dry_run };\n});\nfor (const t of Object.values(live)) {\n  const p = t.plan, ok = t.ok.join(', ');\n  let note, outcome, close = false, assign = false, details, pub = false;\n  if (!t.bad.length) {\n    outcome = 'applied'; close = true; pub = true; details = `додано до групи: ${ok}`;\n    note = polite(`${t.ok.length > 1 ? 'Користувачів' : 'Користувача'} ${ok} додано до групи «${p.group_name}». Проєкти за замовчуванням мають з'явитися після повторного входу в Redmine (вийдіть і зайдіть знову).`,\n      `${ok} ${t.ok.length > 1 ? 'have' : 'has'} been added to the \"${p.group_name}\" group. The default projects should appear after you sign out of Redmine and sign in again.`, t.ticket_id);\n  } else {\n    outcome = 'escalate'; assign = true;\n    details = `не вдалося додати: ${t.bad.join(', ')}` + (ok ? `; додано: ${ok}` : '');\n    note = `Агент: додавання до групи виконано не повністю. ${details}. Потрібна перевірка людиною.`;\n  }\n  rows.push({ ticket_id: t.ticket_id, note, private: !pub, close, assign, logins: t.users ? t.users.mail : '', outcome, details, payload: JSON.stringify(p), dry_run: false });\n}\nreturn rows.map(r => ({ json: { ...r, kind: 'group_add', at: new Date().toISOString() } }));"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    2640,
+    0
+   ],
+   "id": "47d56c2a-9d38-4244-af0c-799245cb8f62",
+   "name": "Code: Build Report"
+  },
+  {
+   "parameters": {
+    "operation": "update",
+    "issueId": "={{ $json.ticket_id }}",
+    "notes": "={{ $json.note }}",
+    "private_notes": "={{ $json.private }}",
+    "additionalFields": {
+     "status_id": "={{ $json.close ? $('Config').first().json.resolved_status_id : undefined }}",
+     "assigned_to_id": "={{ $json.assign ? $('Config').first().json.admins_group_id : undefined }}"
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-redmine.redmine",
+   "typeVersion": 1,
+   "position": [
+    2860,
+    0
+   ],
+   "id": "7d18469c-a8d5-4b34-89e4-cf8177720004",
+   "name": "[Redmine] Update Ticket",
+   "credentials": {
+    "redmineApi": {
+     "id": "<REDMINE_CRED>",
+     "name": "Redmine <ENV> account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "resource": "row",
+    "operation": "insert",
+    "dataTableId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "<AUDIT_TABLE>"
+    },
+    "columns": {
+     "mappingMode": "defineBelow",
+     "matchingColumns": [],
+     "value": {
+      "ticket_id": "={{ $('Code: Build Report').item.json.ticket_id }}",
+      "kind": "={{ $('Code: Build Report').item.json.kind }}",
+      "logins": "={{ $('Code: Build Report').item.json.logins }}",
+      "outcome": "={{ $('Code: Build Report').item.json.outcome }}",
+      "dry_run": "={{ $('Code: Build Report').item.json.dry_run }}",
+      "details": "={{ $('Code: Build Report').item.json.details }}",
+      "at": "={{ $('Code: Build Report').item.json.at }}",
+      "payload": "={{ $('Code: Build Report').item.json.payload }}"
+     },
+     "schema": [
+      {
+       "id": "ticket_id",
+       "displayName": "ticket_id",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "number",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "kind",
+       "displayName": "kind",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "logins",
+       "displayName": "logins",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "outcome",
+       "displayName": "outcome",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "dry_run",
+       "displayName": "dry_run",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "boolean",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "details",
+       "displayName": "details",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "at",
+       "displayName": "at",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "payload",
+       "displayName": "payload",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      }
+     ]
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-base.dataTable",
+   "typeVersion": 1.1,
+   "position": [
+    3080,
+    0
+   ],
+   "id": "8dc395f8-9b3f-4678-ab37-75eb43efe84c",
+   "name": "[Data Table] Log Result"
+  }
+ ],
+ "connections": {
+  "Every 5 Min": {
+   "main": [
+    [
+     {
+      "node": "Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Config": {
+   "main": [
+    [
+     {
+      "node": "[Data Table] Get Log",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Data Table] Get Log": {
+   "main": [
+    [
+     {
+      "node": "Code: Match Pending",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Code: Match Pending": {
+   "main": [
+    [
+     {
+      "node": "[Redmine] Get Ticket History",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Redmine] Get Ticket History": {
+   "main": [
+    [
+     {
+      "node": "[Redmine] Get IT Admins",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Redmine] Get IT Admins": {
+   "main": [
+    [
+     {
+      "node": "Code: Decide Apply",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Code: Decide Apply": {
+   "main": [
+    [
+     {
+      "node": "Apply Now?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Split Out Users": {
+   "main": [
+    [
+     {
+      "node": "[Redmine] Add To Group",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Redmine] Add To Group": {
+   "main": [
+    [
+     {
+      "node": "[Redmine] Verify Membership",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Merge Results": {
+   "main": [
+    [
+     {
+      "node": "Code: Build Report",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Code: Build Report": {
+   "main": [
+    [
+     {
+      "node": "[Redmine] Update Ticket",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Redmine] Update Ticket": {
+   "main": [
+    [
+     {
+      "node": "[Data Table] Log Result",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Apply Now?": {
+   "main": [
+    [
+     {
+      "node": "Split Out Users",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Merge Results",
+      "type": "main",
+      "index": 1
+     }
+    ]
+   ]
+  },
+  "[Redmine] Verify Membership": {
+   "main": [
+    [
+     {
+      "node": "Merge Results",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1"
+ }
+}

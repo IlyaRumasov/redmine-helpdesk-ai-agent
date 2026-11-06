@@ -1,9 +1,9 @@
 {
- "name": "Support Agent: AD Account & Personal Mail",
+ "name": "Автоматизатор: AD Account & Personal Mail",
  "nodes": [
   {
    "parameters": {
-    "content": "## Support Agent: AD Account & Personal Mail\nКожні 5 хв бере нові нерозподілені задачі HelpDesk:\n* «Зміна пароля»: вимкнений обліковий запис AD -> увімкнути + посилання на портал скидання пароля;\n* «Зміна особистої пошти»: готує зміну postOfficeBox і просить підтвердження; змінює флоу «Apply Approved Changes» після коментаря «Погоджую» від адміна.\nПаролі не бачить і не надсилає. Лише в межах OU з Config.scope_dn. Решту передає «IT Адміни».\n\n**DRY_RUN** (Config): true = нічого не змінює, лише приватна нотатка і запис в аудит.",
+    "content": "## Автоматизатор: AD Account & Personal Mail\nКожні 5 хв бере нові нерозподілені задачі HelpDesk:\n* «Зміна пароля»: вимкнений обліковий запис AD -> увімкнути + посилання на портал скидання пароля;\n* «Зміна особистої пошти»: готує зміну postOfficeBox і просить підтвердження; змінює флоу «Apply Approved Changes» після коментаря «Погоджую» від адміна.\nПаролі не бачить і не надсилає. Лише в межах OU з Config.scope_dn. Решту передає «IT Адміни».\n\n**DRY_RUN** (Config): true = нічого не змінює, лише приватна нотатка і запис в аудит.",
     "height": 230,
     "width": 600
    },
@@ -13,7 +13,7 @@
     -200,
     -300
    ],
-   "id": "a44c8eb1-d782-419e-9ca6-73e9c8e804c7",
+   "id": "a04fb2a8-9462-4592-9fe0-83c407659607",
    "name": "Sticky Note"
   },
   {
@@ -33,7 +33,7 @@
     0,
     0
    ],
-   "id": "26c3ca15-c5c1-4c09-ba6b-6de6f9f9de43",
+   "id": "52814433-d712-47df-9191-3524634d21d8",
    "name": "Every 5 Min"
   },
   {
@@ -104,7 +104,7 @@
     220,
     0
    ],
-   "id": "08e2e756-44b7-402e-88bf-2981b971345a",
+   "id": "479ba61a-32d8-42ff-b73e-2cad65c5f610",
    "name": "Config"
   },
   {
@@ -126,7 +126,7 @@
     440,
     0
    ],
-   "id": "22419efb-7dc4-470e-a7aa-9465c624c0ec",
+   "id": "bf4dface-70be-412c-a5b0-59eee40c0fcd",
    "name": "[Data Table] Get Processed",
    "alwaysOutputData": true
   },
@@ -147,7 +147,7 @@
     660,
     0
    ],
-   "id": "3876f24a-b4b0-4d27-8e4a-78d1fb06f891",
+   "id": "d95d7d66-b652-43c0-85d0-3321a7830e19",
    "name": "[Redmine] Get New Tickets",
    "credentials": {
     "redmineApi": {
@@ -158,7 +158,7 @@
   },
   {
    "parameters": {
-    "jsCode": "const cfg = $('Config').first().json;\nconst dry = cfg.dry_run === true || cfg.dry_run === 'true';\nconst allowed = String(cfg.allowed_author_ids).split(',').map(s => s.trim()).filter(Boolean);\n// у бойовому режимі заявки, яких торкався лише DRY RUN, обробляються заново\nconst seen = new Set($('[Data Table] Get Processed').all()\n  .filter(i => i.json.kind !== 'dispatch' && (dry || i.json.dry_run === false)).map(i => String(i.json.ticket_id)));\nconst OWN = /@(example|example)\\.(com|tech|us|eu)$/;\nconst DOMAIN = /\\.(com|net|org|tech|us|eu|io|ua|ai|dev|ru|pl)$/;\nconst out = [];\nfor (const t of ($input.first().json.issues || [])) {\n  if (t.assigned_to || seen.has(String(t.id))) continue;\n  const text = `${t.subject}\\n${t.description || ''}`.toLowerCase();\n  let kind = null;\n  if (/змін\\S*\\s+особист\\S*\\s+пошт/.test(text)) kind = 'mail';\n  else if (/(змін\\S*\\s+парол|скин\\S*\\s+парол|парол\\S*\\s+vpn)/.test(text)) kind = 'enable';\n  // блокування після невдалих входів (AD, SOGo, VPN): що саме робити, вирішує стан обліковки в AD\n  else if (/(заблок|розблок|locked out|account locked)/.test(text) && !/(redmine|редмайн|google|гугл|gmail|rivneshare|1с|1c)/.test(text)) kind = 'enable';\n  if (!kind && t.ai) kind = t.ai.type === 'mail_change' ? 'mail' : t.ai.type === 'password_reset' ? 'enable' : null;\n  if (!kind) continue;\n  const base = { ticket_id: t.id, kind, login: null, ticket_mail: null, old_mail: null, new_mail: null, reason: '' };\n  const esc = reason => out.push({ ...base, kind: 'escalate', request: kind, reason });\n  if (!allowed.includes(String(t.author && t.author.id))) { esc('автор задачі не входить до списку координаторів'); continue; }\n  const mails = [...new Set(text.match(/[\\w.+-]+@[\\w-]+(\\.[\\w-]+)+/g) || [])];\n  const ext = mails.filter(m => !OWN.test(m));\n  const clean = text.replace(/https?:\\/\\/\\S+/g, ' ').replace(/[\\w.+-]+@[\\w.-]+/g, ' ');\n  const own = mails.filter(m => OWN.test(m)).map(m => m.split('@')[0]);\n  let logins = [...new Set((clean.match(/[a-z0-9][a-z0-9._-]*[a-z0-9]/g) || []).concat(own)\n    .filter(w => /[._]/.test(w) && /[a-z].*[a-z]/.test(w) && !DOMAIN.test(w)))];\n  if (!logins.length && t.ai) logins = [...new Set((t.ai.logins || []).map(x => String(x).toLowerCase()).filter(x => /^[a-z0-9][a-z0-9._-]*[a-z0-9]$/.test(x) && /[._]/.test(x)))];\n  if (logins.length !== 1) { esc(logins.length ? `у заявці кілька логінів (${logins.join(', ')})` : 'не знайшов у заявці логіну AD'); continue; }\n  base.login = logins[0];\n  if (kind === 'enable') {\n    if (ext.length > 1) { esc('у заявці кілька особистих адрес'); continue; }\n    base.ticket_mail = ext[0] || null;\n  } else {\n    // стару адресу ГА часто вже не має, тож достатньо нової; зміну підтверджує адміністратор\n    const m = text.match(/(?:із|з|from)\\s+([\\w.+-]+@[\\w-]+(?:\\.[\\w-]+)+)\\s+(?:на|to)\\s+([\\w.+-]+@[\\w-]+(?:\\.[\\w-]+)+)/);\n    if (m) { base.old_mail = m[1]; base.new_mail = m[2]; }\n    else if (ext.length === 1) base.new_mail = ext[0];\n    else { esc(ext.length ? 'у заявці кілька адрес, не зрозуміло, яка нова' : 'у заявці немає нової особистої адреси'); continue; }\n  }\n  out.push(base);\n}\n// Слоти для пошуку в AD (нода LDAP не приймає фільтр цілком із виразу): усі логіни, до 16, зайві = __none__\nconst SL = [...new Set(out.map(x => x.login).filter(Boolean))].map(x => String(x).replace(/[*()\\\\\\u0000]/g, '')).filter(Boolean).slice(0, 16);\nwhile (SL.length < 16) SL.push('__none__');\nif (out.length) out[0].slots = SL;\nreturn out.map(json => ({ json }));"
+    "jsCode": "const saluteOf = t => {  // як звертається автор заявки, якою мовою пише і як його звати\n  const desc = String(t.description || '');\n  const strip = x => String(x || '').replace(/https?:\\/\\/\\S+|\\S+@\\S+|\\b[\\w-]+(?:[._][\\w-]+)+\\b/g, ' ');\n  const txt = strip(desc).length >= 15 ? strip(desc) : strip(String(t.subject || '') + ' ' + desc);\n  const cyr = (txt.match(/[\\u0400-\\u04FF]/g) || []).length, lat = (txt.match(/[A-Za-z]/g) || []).length;\n  const lang = lat >= 8 && cyr * 10 < lat ? 'en' : 'uk';  // англійська, якщо кирилиці майже немає\n  const s = (desc || String(t.subject || '')).toLowerCase().replace(/^[^\\p{L}\\p{N}]+/u, '').slice(0, 80);\n  let hi;\n  if (lang === 'en') hi = /^good\\s+morning/.test(s) ? 'Good morning' : /^good\\s+afternoon/.test(s) ? 'Good afternoon' : /^good\\s+evening/.test(s) ? 'Good evening' : /^hi\\b/.test(s) ? 'Hi' : 'Hello';\n  else if (/^(доброго\\s+ранку|добрий\\s+ранок|доброе\\s+утро)/.test(s)) hi = 'Доброго ранку';\n  else if (/^(добрий\\s+день|доброго\\s+дня|добрый\\s+день)/.test(s)) hi = 'Добрий день';\n  else if (/^(добрий\\s+вечір|доброго\\s+вечора|добрый\\s+вечер)/.test(s)) hi = 'Добрий вечір';\n  else if (/^(вітаю|здрастуйте|здравствуйте)/.test(s)) hi = 'Вітаю';\n  else hi = 'Привіт';\n  const nm = String((t.author && t.author.name) || '').trim().split(/\\s+/);\n  const name = nm.length === 2 && /^[\\p{L}'’-]+$/u.test(nm[1]) ? nm[1] : '';  // у Redmine ім'я у форматі «Прізвище Ім'я»; інші формати без імені\n  return { lang, hi, name };\n};\nconst cfg = $('Config').first().json;\nconst dry = cfg.dry_run === true || cfg.dry_run === 'true';\nconst allowed = String(cfg.allowed_author_ids).split(',').map(s => s.trim()).filter(Boolean);\nconst everyone = allowed.includes('*');  // '*' у Config = заявки від усіх авторів (тест)\n// у бойовому режимі заявки, яких торкався лише DRY RUN, обробляються заново\nconst seen = new Set($('[Data Table] Get Processed').all()\n  .filter(i => i.json.kind !== 'dispatch' && (dry || i.json.dry_run === false)).map(i => String(i.json.ticket_id)));\nconst OWN = /@(example|example)\\.(com|tech|us|eu)$/;\nconst DOMAIN = /\\.(com|net|org|tech|us|eu|io|ua|ai|dev|ru|pl)$/;\nconst out = [];\nfor (const t of ($input.first().json.issues || [])) {\n  // група «IT Адміни» (admins_group_id) = виконавець за замовчуванням, заявка ще нерозподілена\n  if ((t.assigned_to && String(t.assigned_to.id) !== String(cfg.admins_group_id)) || seen.has(String(t.id))) continue;\n  const text = `${t.subject}\\n${t.description || ''}`.toLowerCase();\n  let kind = null;\n  if (/змін\\S*\\s+особист\\S*\\s+пошт/.test(text)) kind = 'mail';\n  else if (/(змін\\S*\\s+парол|скин\\S*\\s+парол|парол\\S*\\s+vpn)/.test(text)) kind = 'enable';\n  // блокування після невдалих входів (AD, SOGo, VPN): що саме робити, вирішує стан обліковки в AD\n  else if (/(заблок|розблок|locked out|account locked)/.test(text) && !/(redmine|редмайн|google|гугл|gmail|rivneshare|1с|1c)/.test(text)) kind = 'enable';\n  if (!kind && t.ai) kind = t.ai.type === 'mail_change' ? 'mail' : t.ai.type === 'password_reset' ? 'enable' : null;\n  if (!kind) continue;\n  const base = { ticket_id: t.id, salute: saluteOf(t), kind, login: null, ticket_mail: null, old_mail: null, new_mail: null, reason: '' };\n  const esc = reason => out.push({ ...base, kind: 'escalate', request: kind, reason });\n  if (!(everyone || allowed.includes(String(t.author && t.author.id)))) { esc('автор задачі не входить до списку координаторів'); continue; }\n  const mails = [...new Set(text.match(/[\\w.+-]+@[\\w-]+(\\.[\\w-]+)+/g) || [])];\n  const ext = mails.filter(m => !OWN.test(m));\n  const clean = text.replace(/https?:\\/\\/\\S+/g, ' ').replace(/[\\w.+-]+@[\\w.-]+/g, ' ');\n  const own = mails.filter(m => OWN.test(m)).map(m => m.split('@')[0]);\n  let logins = [...new Set((clean.match(/[a-z0-9][a-z0-9._-]*[a-z0-9]/g) || []).concat(own)\n    .filter(w => /[._]/.test(w) && /[a-z].*[a-z]/.test(w) && !DOMAIN.test(w)))];\n  if (!logins.length && t.ai) logins = [...new Set((t.ai.logins || []).map(x => String(x).toLowerCase()).filter(x => /^[a-z0-9][a-z0-9._-]*[a-z0-9]$/.test(x) && /[._]/.test(x)))];\n  if (logins.length !== 1) { esc(logins.length ? `у заявці кілька логінів (${logins.join(', ')})` : 'не знайшов у заявці логіну AD'); continue; }\n  base.login = logins[0];\n  // логін із заявки часто скопійований з іншої системи (mdy_x_y у Redmine, в AD може бути x.y чи ms.x.y): готуємо варіанти й пару ім'я/прізвище для пошуку\n  const rest = base.login.replace(/^(mdy|ms)[._]/, '');\n  const parts = rest.split(/[._]/).filter(Boolean);\n  base.cands = [...new Set([rest, parts.join('.'), 'ms.' + parts.join('.')])].filter(c => c !== base.login);\n  base.pair = parts.length === 2 ? parts : null;\n  if (kind === 'enable') {\n    if (ext.length > 1) { esc('у заявці кілька особистих адрес'); continue; }\n    base.ticket_mail = ext[0] || null;\n  } else {\n    // стару адресу ГА часто вже не має, тож достатньо нової; зміну підтверджує адміністратор\n    const m = text.match(/(?:із|з|from)\\s+([\\w.+-]+@[\\w-]+(?:\\.[\\w-]+)+)\\s+(?:на|to)\\s+([\\w.+-]+@[\\w-]+(?:\\.[\\w-]+)+)/);\n    if (m) { base.old_mail = m[1]; base.new_mail = m[2]; }\n    else if (ext.length === 1) base.new_mail = ext[0];\n    else { esc(ext.length ? 'у заявці кілька адрес, не зрозуміло, яка нова' : 'у заявці немає нової особистої адреси'); continue; }\n  }\n  out.push(base);\n}\n// Слоти для пошуку в AD (нода LDAP не приймає фільтр цілком із виразу): логіни з заявок і їхні варіанти, до 16; 4 пари ім'я/прізвище; зайві = __none__\nconst san = x => String(x).replace(/[*()\\\\\\u0000]/g, '');\nconst logs = out.filter(x => x.login);\nconst SL = [...new Set(logs.map(x => x.login).concat(logs.flatMap(x => x.cands)).map(san).filter(Boolean))].slice(0, 16);\nconst PG = [], PS = [];\nfor (const x of logs) if (x.pair && PG.length < 4) { PG.push(san(x.pair[0])); PS.push(san(x.pair[1])); }\nwhile (SL.length < 16) SL.push('__none__');\nwhile (PG.length < 4) { PG.push('__none__'); PS.push('__none__'); }\nif (out.length) { out[0].slots = SL; out[0].pg = PG; out[0].ps = PS; }\nreturn out.map(json => ({ json }));"
    },
    "type": "n8n-nodes-base.code",
    "typeVersion": 2,
@@ -166,19 +166,21 @@
     880,
     0
    ],
-   "id": "322ea799-a072-4d79-9f8d-353d25fbf7e2",
+   "id": "56c6f6b1-9f5d-4b95-9f88-781a37d7efb0",
    "name": "Code: Parse Tickets"
   },
   {
    "parameters": {
     "baseDN": "DC=example,DC=com",
     "searchFor": "custom",
-    "customFilter": "=(&(objectClass=user)(|(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[0] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[1] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[2] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[3] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[4] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[5] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[6] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[7] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[8] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[9] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[10] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[11] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[12] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[13] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[14] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[15] }})))",
+    "customFilter": "=(&(objectClass=user)(|(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[0] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[1] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[2] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[3] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[4] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[5] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[6] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[7] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[8] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[9] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[10] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[11] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[12] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[13] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[14] }})(sAMAccountName={{ $('Code: Parse Tickets').first().json.slots[15] }})(&(givenName={{ $('Code: Parse Tickets').first().json.pg[0] }})(sn={{ $('Code: Parse Tickets').first().json.ps[0] }}))(&(givenName={{ $('Code: Parse Tickets').first().json.pg[1] }})(sn={{ $('Code: Parse Tickets').first().json.ps[1] }}))(&(givenName={{ $('Code: Parse Tickets').first().json.pg[2] }})(sn={{ $('Code: Parse Tickets').first().json.ps[2] }}))(&(givenName={{ $('Code: Parse Tickets').first().json.pg[3] }})(sn={{ $('Code: Parse Tickets').first().json.ps[3] }}))))",
     "returnAll": true,
     "options": {
      "scope": "sub",
      "attributes": [
       "sAMAccountName",
+      "givenName",
+      "sn",
       "userAccountControl",
       "postOfficeBox",
       "memberOf",
@@ -192,7 +194,7 @@
     1100,
     0
    ],
-   "id": "547e2024-65f1-4900-8122-43cd9a3b2282",
+   "id": "f11e90ba-4477-4005-83aa-90482b3b3284",
    "name": "[AD] Search Users",
    "credentials": {
     "ldap": {
@@ -205,7 +207,7 @@
   },
   {
    "parameters": {
-    "jsCode": "const cfg = $('Config').first().json;\nconst dry = cfg.dry_run === true || cfg.dry_run === 'true';\nconst scope = ',' + String(cfg.scope_dn).toLowerCase();\nconst protectedGroups = String(cfg.protected_groups).toLowerCase().split(',').map(s => s.trim()).filter(Boolean);\nconst one = v => Array.isArray(v) ? v[0] : v;\nconst ad = $input.all().map(i => i.json).filter(j => j.sAMAccountName);\nreturn $('Code: Parse Tickets').all().map(({ json: t }) => {\n  const r = { ...t, dry_run: dry, action: 'escalate', dn: null, new_uac: null };\n  if (t.kind === 'escalate') return { json: r };\n  const esc = reason => ({ json: { ...r, reason } });\n  const hits = ad.filter(j => String(one(j.sAMAccountName)).toLowerCase() === t.login);\n  if (hits.length !== 1) return esc(hits.length ? 'кілька збігів в AD' : `логін ${t.login} не знайдено в AD (можливо, обліковий запис видалено)`);\n  const u = hits[0];\n  const dn = String(u.dn);\n  r.dn = dn;\n  if (!dn.toLowerCase().endsWith(scope)) return esc(`обліковий запис поза дозволеним OU (${dn})`);\n  const groups = [].concat(u.memberOf || []).map(g => String(g).toLowerCase());\n  if (groups.some(g => protectedGroups.some(p => g.startsWith('cn=' + p + ',')))) return esc('обліковий запис у привілейованій групі, змінює тільки людина');\n  const uac = parseInt(one(u.userAccountControl), 10) || 0;\n  const pobox = String(one(u.postOfficeBox) || '').trim().toLowerCase();\n  if (t.kind === 'enable') {\n    // вимкнений (неактивність) -> увімкнути; заблокований після невдалих входів (lockoutTime > 0) -> зняти блокування\n    const disabled = !!(uac & 2);\n    const locked = (Number(one(u.lockoutTime)) || 0) > 0;\n    if (!disabled && !locked) return esc('обліковий запис активний і не заблокований, потрібні нові дані для входу (це робить людина)');\n    if (disabled && !pobox) return esc('в AD немає особистої пошти, посилання на скидання пароля нікуди не прийде');\n    if (t.ticket_mail && t.ticket_mail !== pobox) return esc('пошта в заявці не збігається з особистою поштою в AD');\n    r.action = disabled ? 'enable' : 'unlock'; r.new_uac = String(uac & ~2); r.was_locked = locked;\n  } else {\n    if (uac & 2) return esc('обліковий запис вимкнено, спершу потрібна перевірка людиною');\n    if (t.new_mail === pobox) return esc('нова адреса така сама, як в AD');\n    r.current_mail = pobox;\n    r.old_mismatch = !!(t.old_mail && t.old_mail !== pobox);\n    r.action = 'request_approval';\n  }\n  return { json: r };\n});"
+    "jsCode": "const cfg = $('Config').first().json;\nconst dry = cfg.dry_run === true || cfg.dry_run === 'true';\nconst scope = ',' + String(cfg.scope_dn).toLowerCase();\nconst protectedGroups = String(cfg.protected_groups).toLowerCase().split(',').map(s => s.trim()).filter(Boolean);\nconst one = v => Array.isArray(v) ? v[0] : v;\nconst ad = $input.all().map(i => i.json).filter(j => j.sAMAccountName);\nreturn $('Code: Parse Tickets').all().map(({ json: t }) => {\n  const r = { ...t, dry_run: dry, action: 'escalate', dn: null, new_uac: null };\n  if (t.kind === 'escalate') return { json: r };\n  const esc = reason => ({ json: { ...r, reason } });\n  const low = v => String(one(v) || '').toLowerCase();\n  const byLogin = l => ad.filter(j => low(j.sAMAccountName) === l);\n  let hits = byLogin(t.login), via = 'exact';\n  if (!hits.length) { hits = (t.cands || []).flatMap(byLogin); via = 'variant'; }\n  if (!hits.length && t.pair) { const [g, s] = t.pair; hits = ad.filter(j => (low(j.givenName) === g && low(j.sn) === s) || (low(j.givenName) === s && low(j.sn) === g)); via = 'name'; }\n  if (hits.length !== 1) return esc(hits.length ? 'кілька збігів в AD' : `логін ${t.login} не знайдено в AD (перевірено ${[t.login].concat(t.cands || []).join(', ')}${t.pair ? ' і пошук за іменем ' + t.pair.join(' ') : ''}; можливо, обліковий запис видалено)`);\n  const u = hits[0];\n  if (via !== 'exact') { r.login_requested = t.login; r.login = low(u.sAMAccountName); }\n  // знайдено лише за іменем: дію не виконуємо, показуємо інженеру, який обліковий запис підходить\n  if (via === 'name') return esc(`логін ${t.login} не знайдено, але в AD за іменем є ${r.login}: інженер має перевірити, що це та сама людина`);\n  const dn = String(u.dn);\n  r.dn = dn;\n  if (!dn.toLowerCase().endsWith(scope)) return esc(`обліковий запис поза дозволеним OU (${dn})`);\n  const groups = [].concat(u.memberOf || []).map(g => String(g).toLowerCase());\n  if (groups.some(g => protectedGroups.some(p => g.startsWith('cn=' + p + ',')))) return esc('обліковий запис у привілейованій групі, змінює тільки людина');\n  const uac = parseInt(one(u.userAccountControl), 10) || 0;\n  const pobox = String(one(u.postOfficeBox) || '').trim().toLowerCase();\n  if (t.kind === 'enable') {\n    // вимкнений (неактивність) -> увімкнути; заблокований після невдалих входів (lockoutTime > 0) -> зняти блокування\n    const disabled = !!(uac & 2);\n    const locked = (Number(one(u.lockoutTime)) || 0) > 0;\n    if (!disabled && !locked) return esc('обліковий запис активний і не заблокований, потрібні нові дані для входу (це робить людина)');\n    if (disabled && !pobox) return esc('в AD немає особистої пошти, посилання на скидання пароля нікуди не прийде');\n    if (t.ticket_mail && t.ticket_mail !== pobox) return esc('пошта в заявці не збігається з особистою поштою в AD');\n    r.action = disabled ? 'enable' : 'unlock'; r.new_uac = String(uac & ~2); r.was_locked = locked;\n  } else {\n    if (uac & 2) return esc('обліковий запис вимкнено, спершу потрібна перевірка людиною');\n    if (t.new_mail === pobox) return esc('нова адреса така сама, як в AD');\n    r.current_mail = pobox;\n    r.old_mismatch = !!(t.old_mail && t.old_mail !== pobox);\n    r.action = 'request_approval';\n  }\n  return { json: r };\n});"
    },
    "type": "n8n-nodes-base.code",
    "typeVersion": 2,
@@ -213,7 +215,7 @@
     1320,
     0
    ],
-   "id": "4a47986e-7555-4f5d-8d99-b595d0105f67",
+   "id": "d9055071-3d4c-48c5-b31a-e170861e75ca",
    "name": "Code: Decide AD Action"
   },
   {
@@ -258,7 +260,7 @@
     1540,
     0
    ],
-   "id": "5f1aa9c1-7342-41e7-8b61-52f462511268",
+   "id": "37b54196-b741-40b4-8293-4dbe1af060c8",
    "name": "Route by Action"
   },
   {
@@ -284,7 +286,7 @@
     1760,
     -260
    ],
-   "id": "b8949f0c-0eda-454e-9fa9-53071842dffb",
+   "id": "57a567a0-62ae-4fd4-957a-9681fb4607e3",
    "name": "[AD] Restore Access",
    "credentials": {
     "ldap": {
@@ -306,7 +308,7 @@
     1980,
     -200
    ],
-   "id": "894924c5-9661-42f2-bf79-2bde7d9988df",
+   "id": "5818bae7-d59d-4f18-bdec-d797f63399da",
    "name": "Mark Done"
   },
   {
@@ -321,7 +323,7 @@
     1980,
     -60
    ],
-   "id": "29fe0626-46fd-4c1b-a48b-61fdb2f6c3c4",
+   "id": "c0736298-6256-4644-a710-9fbda92298fd",
    "name": "Mark Failed"
   },
   {
@@ -334,12 +336,12 @@
     2200,
     0
    ],
-   "id": "3b84a690-466a-4d9c-b105-5fc821f1d983",
+   "id": "a21510d0-2d7c-4078-9ba8-725bd3a29c42",
    "name": "Merge Results"
   },
   {
    "parameters": {
-    "jsCode": "const cfg = $('Config').first().json;\nconst portal = cfg.portal_url;\nreturn $input.all().map(({ json: j }) => {\n  let note, kind = j.action, close = false, assign = false, approval = false, payload = '', details = j.reason || '';\n  const failed = j.done === 'no';\n  if (j.action === 'unlock' && !failed) {\n    close = true;\n    note = `Вітаю. Обліковий запис ${j.login} розблоковано (його було заблоковано після кількох невдалих спроб входу). ГА може увійти зі своїм паролем; якщо пароль забуто, скористайтеся порталом ${portal}`;\n  } else if (j.action === 'enable' && !failed) {\n    close = true;\n    note = `Привіт! Ми успішно увімкнули обліковий запис ${j.login}. Тепер ГА може самостійно змінити пароль, скориставшись сервісом за посиланням: ${portal}`;\n  } else if (j.action === 'request_approval') {\n    kind = 'set_mail'; assign = true; approval = true;\n    payload = JSON.stringify({ login: j.login, dn: j.dn, old: j.current_mail, new: j.new_mail });\n    details = `${j.current_mail || '(порожньо)'} -> ${j.new_mail}`;\n    note = `Агент підготував зміну особистої пошти (поле «Почтовый ящик» в AD) для ${j.login}: ${details}.`\n      + (j.old_mismatch ? ` Увага: стара адреса в заявці (${j.old_mail}) не збігається з AD.` : '')\n      + ' Щоб виконати, учасник «IT Адміни» пише в задачі коментар «Погоджую», агент змінить пошту й закриє задачу. Щоб відхилити, закрийте задачу або нічого не пишіть (через 7 днів зміну буде скасовано).';\n  } else {\n    kind = 'escalate'; assign = true;\n    if (failed) details = `помилка AD під час дії «${j.action}»: ${j.error}`;\n    note = `Агент: автоматично не обробляю. Причина: ${details}. Передано адміністраторам.`;\n  }\n  if (j.dry_run) {\n    const would = j.action === 'enable' ? `увімкнув би ${j.login} і дав би посилання на портал`\n      : j.action === 'unlock' ? `зняв би блокування ${j.login} після невдалих входів і закрив би задачу`\n      : j.action === 'request_approval' ? `передав би на підтвердження зміну особистої пошти ${j.login}: ${details}`\n      : `передав би задачу адміністраторам. Причина: ${details}`;\n    note = `DRY RUN (змін не внесено). Агент ${would}.`;\n    close = false; assign = false;  // approval лишається: сухий рядок awaiting_approval дозволяє флоу Apply показати «виконав би»\n  }\n  return { json: { ticket_id: j.ticket_id, kind, note, private: j.dry_run || !['enable', 'unlock'].includes(kind), close, assign, approval,\n                   logins: j.login || '', outcome: approval ? 'awaiting_approval' : kind, details, payload,\n                   dry_run: j.dry_run, at: new Date().toISOString() } };\n});"
+    "jsCode": "const saluteOf = t => {  // як звертається автор заявки, якою мовою пише і як його звати\n  const desc = String(t.description || '');\n  const strip = x => String(x || '').replace(/https?:\\/\\/\\S+|\\S+@\\S+|\\b[\\w-]+(?:[._][\\w-]+)+\\b/g, ' ');\n  const txt = strip(desc).length >= 15 ? strip(desc) : strip(String(t.subject || '') + ' ' + desc);\n  const cyr = (txt.match(/[\\u0400-\\u04FF]/g) || []).length, lat = (txt.match(/[A-Za-z]/g) || []).length;\n  const lang = lat >= 8 && cyr * 10 < lat ? 'en' : 'uk';  // англійська, якщо кирилиці майже немає\n  const s = (desc || String(t.subject || '')).toLowerCase().replace(/^[^\\p{L}\\p{N}]+/u, '').slice(0, 80);\n  let hi;\n  if (lang === 'en') hi = /^good\\s+morning/.test(s) ? 'Good morning' : /^good\\s+afternoon/.test(s) ? 'Good afternoon' : /^good\\s+evening/.test(s) ? 'Good evening' : /^hi\\b/.test(s) ? 'Hi' : 'Hello';\n  else if (/^(доброго\\s+ранку|добрий\\s+ранок|доброе\\s+утро)/.test(s)) hi = 'Доброго ранку';\n  else if (/^(добрий\\s+день|доброго\\s+дня|добрый\\s+день)/.test(s)) hi = 'Добрий день';\n  else if (/^(добрий\\s+вечір|доброго\\s+вечора|добрый\\s+вечер)/.test(s)) hi = 'Добрий вечір';\n  else if (/^(вітаю|здрастуйте|здравствуйте)/.test(s)) hi = 'Вітаю';\n  else hi = 'Привіт';\n  const nm = String((t.author && t.author.name) || '').trim().split(/\\s+/);\n  const name = nm.length === 2 && /^[\\p{L}'’-]+$/u.test(nm[1]) ? nm[1] : '';  // у Redmine ім'я у форматі «Прізвище Ім'я»; інші формати без імені\n  return { lang, hi, name };\n};\nconst _kh = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Kyiv', hour: 'numeric', hourCycle: 'h23' }).format(new Date()));\n// звертання, мова й ім'я автора: з Code: Parse Tickets (флоу-інструменти) або з тексту заявки (флоу Apply)\nconst _salOf = id => {\n  try { const p = $('Code: Parse Tickets').all().find(x => String(x.json.ticket_id) === String(id)); if (p && p.json.salute) return p.json.salute; } catch (e) {}\n  try { for (const { json: h } of $('[Redmine] Get Ticket History').all()) { const i = h.issue || h; if (String(i.id) === String(id)) return saluteOf(i); } } catch (e) {}\n  return { lang: 'uk', hi: 'Привіт', name: '' };\n};\n// лише для публічних відповідей людям (укр. або англ. за мовою заявки); приватні нотатки для адміністраторів без привітань\nconst polite = (uk, en, id) => {\n  const s = _salOf(id), nm = s.name ? ', ' + s.name : '';\n  return s.lang === 'en'\n    ? `${s.hi}${nm}! Thank you for your request.\\n\\n${en || uk}\\n\\n${_kh < 18 ? 'Have a nice day!' : 'Have a nice evening!'}`\n    : `${s.hi}${nm}! Дякуємо за звернення.\\n\\n${uk}\\n\\n${_kh < 18 ? 'Гарного дня!' : 'Гарного вечора!'}`;\n};\nconst cfg = $('Config').first().json;\nconst portal = cfg.portal_url;\nreturn $input.all().map(({ json: j }) => {\n  let note, noteEn = '', kind = j.action, close = false, assign = false, approval = false, payload = '', details = j.reason || '';\n  const failed = j.done === 'no';\n  if (j.action === 'unlock' && !failed) {\n    close = true;\n    note = `Обліковий запис ${j.login} розблоковано (його було заблоковано після кількох невдалих спроб входу). ГА може увійти зі своїм паролем; якщо пароль забуто, скористайтеся порталом ${portal}`;\n    noteEn = `Account ${j.login} has been unlocked (it was locked after several failed sign-in attempts). You can sign in with your password; if you have forgotten it, use the portal ${portal}`;\n  } else if (j.action === 'enable' && !failed) {\n    close = true;\n    note = `Ми успішно увімкнули обліковий запис ${j.login}. Тепер ГА може самостійно змінити пароль, скориставшись сервісом за посиланням: ${portal}`;\n    noteEn = `Your account ${j.login} has been enabled. You can now set a new password yourself using the service: ${portal}`;\n  } else if (j.action === 'request_approval') {\n    kind = 'set_mail'; assign = true; approval = true;\n    payload = JSON.stringify({ login: j.login, dn: j.dn, old: j.current_mail, new: j.new_mail });\n    details = `${j.current_mail || '(порожньо)'} -> ${j.new_mail}`;\n    note = `Агент підготував зміну особистої пошти (поле «Почтовый ящик» в AD) для ${j.login}: ${details}.`\n      + (j.old_mismatch ? ` Увага: стара адреса в заявці (${j.old_mail}) не збігається з AD.` : '')\n      + ' Щоб виконати, учасник «IT Адміни» пише в задачі коментар «Погоджую», агент змінить пошту й закриє задачу. Щоб відхилити, закрийте задачу або нічого не пишіть (через 7 днів зміну буде скасовано).';\n  } else {\n    kind = 'escalate'; assign = true;\n    if (failed) details = `помилка AD під час дії «${j.action}»: ${j.error}`;\n    note = `Агент: автоматично не обробляю. Причина: ${details}. Передано адміністраторам.`;\n  }\n  if (j.login_requested && j.action !== 'escalate') note += ` Примітка: у заявці вказано логін «${j.login_requested}», в AD знайдено «${j.login}».`;\n  if (j.login_requested && j.action !== 'escalate') noteEn += ` Note: the ticket mentions login \"${j.login_requested}\", but \"${j.login}\" was found in AD.`;\n  if (j.dry_run) {\n    const would = j.action === 'enable' ? `увімкнув би ${j.login} і дав би посилання на портал`\n      : j.action === 'unlock' ? `зняв би блокування ${j.login} після невдалих входів і закрив би задачу`\n      : j.action === 'request_approval' ? `передав би на підтвердження зміну особистої пошти ${j.login}: ${details}`\n      : `передав би задачу адміністраторам. Причина: ${details}`;\n    note = `DRY RUN (змін не внесено). Агент ${would}.`;\n    close = false; assign = false;  // approval лишається: сухий рядок awaiting_approval дозволяє флоу Apply показати «виконав би»\n  }\n  return { json: { ticket_id: j.ticket_id, kind, note: (j.dry_run || !['enable', 'unlock'].includes(kind)) ? note : polite(note, noteEn, j.ticket_id), private: j.dry_run || !['enable', 'unlock'].includes(kind), close, assign, approval,\n                   logins: j.login || '', outcome: approval ? 'awaiting_approval' : kind, details, payload,\n                   dry_run: j.dry_run, at: new Date().toISOString() } };\n});"
    },
    "type": "n8n-nodes-base.code",
    "typeVersion": 2,
@@ -347,7 +349,7 @@
     2420,
     0
    ],
-   "id": "95491312-90a7-48b3-8c81-3a1ccd955094",
+   "id": "73d16d75-fc76-4cd1-ad85-2fe50453099d",
    "name": "Code: Build Report"
   },
   {
@@ -368,7 +370,7 @@
     2640,
     0
    ],
-   "id": "7a2bf8ea-b79c-4a28-885e-f922f145893a",
+   "id": "7076a1cc-99f9-489f-843d-8a7c761eda67",
    "name": "[Redmine] Update Ticket",
    "credentials": {
     "redmineApi": {
@@ -483,7 +485,7 @@
     2860,
     0
    ],
-   "id": "ceb23d59-5760-45fc-9916-5552a2772e4f",
+   "id": "39e11287-08d3-4aee-9745-33ae418a4479",
    "name": "[Data Table] Log Result"
   }
  ],

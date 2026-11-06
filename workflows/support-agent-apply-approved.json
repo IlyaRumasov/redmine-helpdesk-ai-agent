@@ -1,9 +1,9 @@
 {
- "name": "Support Agent: Apply Approved Changes",
+ "name": "Автоматизатор: Apply Approved Changes",
  "nodes": [
   {
    "parameters": {
-    "content": "## Support Agent: Apply Approved Changes\nКожні 5 хв перевіряє заявки, для яких агент підготував зміну (аудит: awaiting_approval).\nВиконує лише після коментаря «Погоджую» від учасника «IT Адміни» (не автора заявки) і якщо в AD нічого не змінилось.\nЗакрита задача або 7 днів без підтвердження = зміну скасовано.\nЗараз: зміна особистої пошти (postOfficeBox).\n\n**DRY_RUN** (Config): true = нічого не змінює.",
+    "content": "## Автоматизатор: Apply Approved Changes\nКожні 5 хв перевіряє заявки, для яких агент підготував зміну (аудит: awaiting_approval).\nВиконує лише після коментаря «Погоджую» від учасника «IT Адміни» (не автора заявки) і якщо в AD нічого не змінилось.\nЗакрита задача або 7 днів без підтвердження = зміну скасовано.\nЗараз: зміна особистої пошти (postOfficeBox).\n\n**DRY_RUN** (Config): true = нічого не змінює.",
     "height": 210,
     "width": 620
    },
@@ -13,7 +13,7 @@
     -200,
     -300
    ],
-   "id": "db040c19-d620-4739-ae25-c6be2b1ea84f",
+   "id": "088246d7-1c28-448c-a6f4-8ba1a82172b4",
    "name": "Sticky Note"
   },
   {
@@ -33,7 +33,7 @@
     0,
     0
    ],
-   "id": "d326b127-049d-4924-958f-dc406f84aa82",
+   "id": "cfb2cea9-ec91-4808-94fd-91f1b96b6e1a",
    "name": "Every 5 Min"
   },
   {
@@ -98,7 +98,7 @@
     220,
     0
    ],
-   "id": "686718d2-5d38-4de2-8459-d0f7128f76a1",
+   "id": "3aa672df-c225-47ff-b59f-2cb846062ec5",
    "name": "Config"
   },
   {
@@ -120,7 +120,7 @@
     440,
     0
    ],
-   "id": "c2e485e9-7341-47c4-9617-317c4b031304",
+   "id": "567c0de5-8385-416c-bc17-79f60a8e48fb",
    "name": "[Data Table] Get Log",
    "alwaysOutputData": true
   },
@@ -134,7 +134,7 @@
     880,
     0
    ],
-   "id": "32b58778-8869-4aeb-b29a-fb660ee93907",
+   "id": "d385bbf9-b7e7-4440-ba2d-a7188ef22e29",
    "name": "Code: Match Pending"
   },
   {
@@ -152,7 +152,7 @@
     1100,
     0
    ],
-   "id": "5e8ce967-ed57-4be1-b0ed-72535bf6f52d",
+   "id": "4b8627f6-e42d-43b7-bbdd-49f3b9048a34",
    "name": "[Redmine] Get Ticket History",
    "credentials": {
     "redmineApi": {
@@ -178,7 +178,7 @@
     1320,
     0
    ],
-   "id": "21641487-8dab-4b85-b31a-def8a10af211",
+   "id": "74358f25-8ffd-48fa-b5d8-46e02fa192f8",
    "name": "[Redmine] Get IT Admins",
    "credentials": {
     "redmineApi": {
@@ -209,7 +209,7 @@
     1540,
     0
    ],
-   "id": "a53aedd5-e688-4b11-92fd-afc566cd1cec",
+   "id": "3f16ad82-f22b-4979-b14d-87bdfb04af32",
    "name": "[AD] Search Users",
    "credentials": {
     "ldap": {
@@ -230,7 +230,7 @@
     1760,
     0
    ],
-   "id": "6ba9fe58-12ea-4f3b-aa91-905175762cb7",
+   "id": "4836e1df-e0c5-451a-b114-5a4ad022e55e",
    "name": "Code: Decide Apply"
   },
   {
@@ -264,7 +264,7 @@
     1980,
     0
    ],
-   "id": "445bf105-c76d-49ec-8abf-5981e6c4356b",
+   "id": "bf220e24-2e2c-4159-83cd-07d6becda759",
    "name": "Apply Now?"
   },
   {
@@ -286,7 +286,7 @@
     2200,
     -160
    ],
-   "id": "eac90ec4-8974-49a9-ab75-2a8007e595eb",
+   "id": "c63bc2e3-073a-4e42-8920-5fce919cd0ce",
    "name": "[AD] Update Personal Mail",
    "credentials": {
     "ldap": {
@@ -308,7 +308,7 @@
     2420,
     -240
    ],
-   "id": "629d978c-0b43-4852-be38-53fd72799f47",
+   "id": "d11c17d8-e11a-43ad-8c6c-5222ff66c4ee",
    "name": "Mark Done"
   },
   {
@@ -323,7 +323,7 @@
     2420,
     -80
    ],
-   "id": "2b2c7fb5-9ca8-4f0d-aede-1cdd9fac4ad2",
+   "id": "f63b609c-1943-4d3b-9a29-99ba6985f510",
    "name": "Mark Failed"
   },
   {
@@ -336,12 +336,12 @@
     2640,
     0
    ],
-   "id": "2609d762-fdb5-4107-a3bb-fd144eaa3e5a",
+   "id": "9b224e89-289f-4b25-98cf-9dc5c2bf4e06",
    "name": "Merge Results"
   },
   {
    "parameters": {
-    "jsCode": "const cfg = $('Config').first().json;\nreturn $input.all().map(({ json: j }) => {\n  const p = j.plan || {};\n  const failed = j.done === 'no';\n  let note, kind = 'set_mail', close = false, assign = false, details = j.reason || '';\n  if (j.action === 'set_mail' && !failed) {\n    close = true;\n    details = `${p.old || '(порожньо)'} -> ${p.new}, підтвердив ${j.approved_by}`;\n    note = `Доброго дня! Особиста пошта для ${p.login} змінена, для генерації нового паролю скористайтеся порталом ${cfg.portal_url}`;\n  } else if (j.action === 'cancel') {\n    kind = 'cancelled';\n    note = `Агент: зміну особистої пошти скасовано (${details}). Якщо вона ще потрібна, створіть нову заявку.`;\n  } else {\n    kind = 'escalate'; assign = true;\n    if (failed) details = `помилка AD під час зміни пошти: ${j.error}`;\n    note = `Агент: зміну пошти не виконано. Причина: ${details}. Потрібна перевірка людиною.`;\n  }\n  if (j.dry_run) {\n    note = `DRY RUN (змін не внесено). Агент ${kind === 'set_mail' ? 'змінив би пошту ' + p.login + ' на ' + p.new + ' і закрив би задачу' : 'не виконав би зміну. Причина: ' + details}.`;\n    close = false; assign = false;\n  }\n  return { json: { ticket_id: j.ticket_id, kind, note, private: j.dry_run || kind !== 'set_mail', close, assign,\n                   logins: p.login || '', outcome: kind === 'set_mail' && !j.dry_run ? 'applied' : kind, details,\n                   payload: JSON.stringify(p), dry_run: j.dry_run, at: new Date().toISOString() } };\n});"
+    "jsCode": "const saluteOf = t => {  // як звертається автор заявки, якою мовою пише і як його звати\n  const desc = String(t.description || '');\n  const strip = x => String(x || '').replace(/https?:\\/\\/\\S+|\\S+@\\S+|\\b[\\w-]+(?:[._][\\w-]+)+\\b/g, ' ');\n  const txt = strip(desc).length >= 15 ? strip(desc) : strip(String(t.subject || '') + ' ' + desc);\n  const cyr = (txt.match(/[\\u0400-\\u04FF]/g) || []).length, lat = (txt.match(/[A-Za-z]/g) || []).length;\n  const lang = lat >= 8 && cyr * 10 < lat ? 'en' : 'uk';  // англійська, якщо кирилиці майже немає\n  const s = (desc || String(t.subject || '')).toLowerCase().replace(/^[^\\p{L}\\p{N}]+/u, '').slice(0, 80);\n  let hi;\n  if (lang === 'en') hi = /^good\\s+morning/.test(s) ? 'Good morning' : /^good\\s+afternoon/.test(s) ? 'Good afternoon' : /^good\\s+evening/.test(s) ? 'Good evening' : /^hi\\b/.test(s) ? 'Hi' : 'Hello';\n  else if (/^(доброго\\s+ранку|добрий\\s+ранок|доброе\\s+утро)/.test(s)) hi = 'Доброго ранку';\n  else if (/^(добрий\\s+день|доброго\\s+дня|добрый\\s+день)/.test(s)) hi = 'Добрий день';\n  else if (/^(добрий\\s+вечір|доброго\\s+вечора|добрый\\s+вечер)/.test(s)) hi = 'Добрий вечір';\n  else if (/^(вітаю|здрастуйте|здравствуйте)/.test(s)) hi = 'Вітаю';\n  else hi = 'Привіт';\n  const nm = String((t.author && t.author.name) || '').trim().split(/\\s+/);\n  const name = nm.length === 2 && /^[\\p{L}'’-]+$/u.test(nm[1]) ? nm[1] : '';  // у Redmine ім'я у форматі «Прізвище Ім'я»; інші формати без імені\n  return { lang, hi, name };\n};\nconst _kh = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Kyiv', hour: 'numeric', hourCycle: 'h23' }).format(new Date()));\n// звертання, мова й ім'я автора: з Code: Parse Tickets (флоу-інструменти) або з тексту заявки (флоу Apply)\nconst _salOf = id => {\n  try { const p = $('Code: Parse Tickets').all().find(x => String(x.json.ticket_id) === String(id)); if (p && p.json.salute) return p.json.salute; } catch (e) {}\n  try { for (const { json: h } of $('[Redmine] Get Ticket History').all()) { const i = h.issue || h; if (String(i.id) === String(id)) return saluteOf(i); } } catch (e) {}\n  return { lang: 'uk', hi: 'Привіт', name: '' };\n};\n// лише для публічних відповідей людям (укр. або англ. за мовою заявки); приватні нотатки для адміністраторів без привітань\nconst polite = (uk, en, id) => {\n  const s = _salOf(id), nm = s.name ? ', ' + s.name : '';\n  return s.lang === 'en'\n    ? `${s.hi}${nm}! Thank you for your request.\\n\\n${en || uk}\\n\\n${_kh < 18 ? 'Have a nice day!' : 'Have a nice evening!'}`\n    : `${s.hi}${nm}! Дякуємо за звернення.\\n\\n${uk}\\n\\n${_kh < 18 ? 'Гарного дня!' : 'Гарного вечора!'}`;\n};\nconst cfg = $('Config').first().json;\nreturn $input.all().map(({ json: j }) => {\n  const p = j.plan || {};\n  const failed = j.done === 'no';\n  let note, noteEn = '', kind = 'set_mail', close = false, assign = false, details = j.reason || '';\n  if (j.action === 'set_mail' && !failed) {\n    close = true;\n    details = `${p.old || '(порожньо)'} -> ${p.new}, підтвердив ${j.approved_by}`;\n    note = `Особиста пошта для ${p.login} змінена, для генерації нового паролю скористайтеся порталом ${cfg.portal_url}`;\n    noteEn = `The personal email for ${p.login} has been changed. To generate a new password, use the portal ${cfg.portal_url}`;\n  } else if (j.action === 'cancel') {\n    kind = 'cancelled';\n    note = `Агент: зміну особистої пошти скасовано (${details}). Якщо вона ще потрібна, створіть нову заявку.`;\n  } else {\n    kind = 'escalate'; assign = true;\n    if (failed) details = `помилка AD під час зміни пошти: ${j.error}`;\n    note = `Агент: зміну пошти не виконано. Причина: ${details}. Потрібна перевірка людиною.`;\n  }\n  if (j.dry_run) {\n    note = `DRY RUN (змін не внесено). Агент ${kind === 'set_mail' ? 'змінив би пошту ' + p.login + ' на ' + p.new + ' і закрив би задачу' : 'не виконав би зміну. Причина: ' + details}.`;\n    close = false; assign = false;\n  }\n  return { json: { ticket_id: j.ticket_id, kind, note: (j.dry_run || kind !== 'set_mail') ? note : polite(note, noteEn, j.ticket_id), private: j.dry_run || kind !== 'set_mail', close, assign,\n                   logins: p.login || '', outcome: kind === 'set_mail' && !j.dry_run ? 'applied' : kind, details,\n                   payload: JSON.stringify(p), dry_run: j.dry_run, at: new Date().toISOString() } };\n});"
    },
    "type": "n8n-nodes-base.code",
    "typeVersion": 2,
@@ -349,7 +349,7 @@
     2860,
     0
    ],
-   "id": "b9516c2f-1dfd-4306-b1dc-2b836765253a",
+   "id": "e455078e-9adc-4e87-a6ef-c7912e336480",
    "name": "Code: Build Report"
   },
   {
@@ -370,7 +370,7 @@
     3080,
     0
    ],
-   "id": "69f3385f-961d-45bd-b4bb-f38e21b47362",
+   "id": "b6d378eb-922f-4a9e-aaa2-1650198d4d72",
    "name": "[Redmine] Update Ticket",
    "credentials": {
     "redmineApi": {
@@ -485,7 +485,7 @@
     3300,
     0
    ],
-   "id": "34483233-4c3a-450c-a8f2-728629a7a6d3",
+   "id": "c2457b1c-12cd-4be2-96d5-5eca7bb2adec",
    "name": "[Data Table] Log Result"
   }
  ],

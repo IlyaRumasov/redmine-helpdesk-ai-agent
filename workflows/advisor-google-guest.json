@@ -1,5 +1,5 @@
 {
- "name": "[PILOT] Advisor Tool: Google Guest Status",
+ "name": "Радник (інструмент): Google Guest Status",
  "nodes": [
   {
    "parameters": {
@@ -17,7 +17,7 @@
     0,
     0
    ],
-   "id": "a2531e45-16b5-47ff-a22c-99c84d23e19e",
+   "id": "7ed91470-7cf5-451f-95fa-0a8c7e1fc1d9",
    "name": "When Called by Agent"
   },
   {
@@ -46,7 +46,7 @@
     220,
     0
    ],
-   "id": "3497b23c-6a94-42c9-9b20-92760885b00e",
+   "id": "72d3082b-0022-4d02-a9bd-c986358c44fc",
    "name": "Config"
   },
   {
@@ -59,7 +59,7 @@
     440,
     0
    ],
-   "id": "48c6e363-6f28-425a-bd49-5abcfdbd101a",
+   "id": "deaa947d-54f0-44ae-98c3-00ad923ff64b",
    "name": "Code: Validate"
   },
   {
@@ -83,7 +83,7 @@
     660,
     0
    ],
-   "id": "e05d6a85-474e-45fa-9f89-6e91b3db9dd6",
+   "id": "ca80200f-e414-4f92-a928-f826aff1e288",
    "name": "[Google] Get Guest",
    "credentials": {
     "googleApi": {
@@ -103,7 +103,7 @@
     880,
     0
    ],
-   "id": "adff2d1a-41cb-41f6-afbc-84cff30bcf58",
+   "id": "8b263af8-cfe6-4c1c-9ca3-d60cc64bff06",
    "name": "Code: Result"
   },
   {
@@ -118,7 +118,7 @@
     -60,
     -260
    ],
-   "id": "01566b09-40e4-42ac-b409-3bbac3c83b56",
+   "id": "e309bc4c-f543-476a-9055-e3f848f0aef1",
    "name": "Sticky Note"
   }
  ],

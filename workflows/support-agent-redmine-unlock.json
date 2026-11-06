@@ -1,9 +1,9 @@
 {
- "name": "Support Agent: Redmine Unlock",
+ "name": "Автоматизатор: Redmine Unlock",
  "nodes": [
   {
    "parameters": {
-    "content": "## Support Agent: Redmine Unlock\nКожні 5 хв бере нові нерозподілені задачі HelpDesk про розблокування Redmine, дістає логіни, розблоковує заблоковані облікові записи (status 3 -> 1), коментує й закриває задачу. Усе сумнівне передає групі «IT Адміни».\n\n**DRY_RUN** (вузол Config): true = нічого не змінює, лише приватна нотатка і запис в аудит.",
+    "content": "## Автоматизатор: Redmine Unlock\nКожні 5 хв бере нові нерозподілені задачі HelpDesk про розблокування Redmine, дістає логіни, розблоковує заблоковані облікові записи (status 3 -> 1), коментує й закриває задачу. Усе сумнівне передає групі «IT Адміни».\n\n**DRY_RUN** (вузол Config): true = нічого не змінює, лише приватна нотатка і запис в аудит.",
     "height": 190,
     "width": 560
    },
@@ -13,7 +13,7 @@
     -200,
     -260
    ],
-   "id": "f45a83d6-331f-4ba5-ae35-bfa3f5dc814c",
+   "id": "a931a7a5-83b4-41fc-9c72-ba42d3f1aa7f",
    "name": "Sticky Note"
   },
   {
@@ -33,7 +33,7 @@
     0,
     0
    ],
-   "id": "b023ca79-0cb3-4c33-bee7-b37ab65befe1",
+   "id": "accd7b21-0487-4b54-830a-192560a12573",
    "name": "Every 5 Min"
   },
   {
@@ -92,7 +92,7 @@
     220,
     0
    ],
-   "id": "77ef888c-ceed-41ca-b7db-bb19de0dbf34",
+   "id": "376c854f-2716-46b2-829e-bd0a17b23e9b",
    "name": "Config"
   },
   {
@@ -112,7 +112,7 @@
     440,
     0
    ],
-   "id": "715e9948-4a31-487a-93f1-129750dd89fc",
+   "id": "945988f8-5f7b-470e-9e82-a58f388b5387",
    "name": "[Redmine] Get Locked IT Admins",
    "credentials": {
     "redmineApi": {
@@ -141,7 +141,7 @@
     660,
     0
    ],
-   "id": "6d5c801e-e420-4dd5-a9bd-9f413d7abfff",
+   "id": "bc721c9b-4b40-437b-8ec5-b6a3c66921dd",
    "name": "[Data Table] Get Processed",
    "alwaysOutputData": true
   },
@@ -162,7 +162,7 @@
     880,
     0
    ],
-   "id": "6cf6bbcc-069d-4361-ae57-d75de2126db8",
+   "id": "71d66c49-2af6-4ef2-90ca-eb408f17013c",
    "name": "[Redmine] Get New Tickets",
    "credentials": {
     "redmineApi": {
@@ -173,7 +173,7 @@
   },
   {
    "parameters": {
-    "jsCode": "const cfg = $('Config').first().json;\nconst allowed = String(cfg.allowed_author_ids).split(',').map(s => s.trim()).filter(Boolean);\nconst maxCand = Number(cfg.max_candidates);\nconst dry = cfg.dry_run === true || cfg.dry_run === 'true';\n// у бойовому режимі заявки, яких торкався лише DRY RUN, обробляються заново\nconst seen = new Set($('[Data Table] Get Processed').all()\n  .filter(i => i.json.kind !== 'dispatch' && (dry || i.json.dry_run === false)).map(i => String(i.json.ticket_id)));\nconst DOMAIN = /\\.(com|net|org|tech|us|eu|io|ua|ai|dev|ru|pl)$/;\nconst out = [];\nfor (const t of ($input.first().json.issues || [])) {\n  if (t.assigned_to || seen.has(String(t.id))) continue;\n  const text = `${t.subject}\\n${t.description || ''}`.toLowerCase();\n  // t.ai: підказка диспетчера (тип і логіни від ІІ), коли правила заявку не впізнали\n  const isUnlock = (/(розблок|разблок|unlock)/.test(text) && /(redmine|редмайн)/.test(text)) || !!(t.ai && t.ai.type === 'redmine_unlock');\n  if (!isUnlock) continue;\n  const base = { ticket_id: t.id, author_id: String(t.author && t.author.id) };\n  if (!allowed.includes(base.author_id)) {\n    out.push({ ...base, kind: 'escalate', reason: 'автор задачі не входить до списку координаторів' });\n    continue;\n  }\n  const mails = (text.match(/[\\w.+-]+@(?:example|example)\\.com/g) || []).map(m => m.split('@')[0]);\n  const clean = text.replace(/https?:\\/\\/\\S+/g, ' ').replace(/[\\w.+-]+@[\\w.-]+/g, ' ');\n  const words = (clean.match(/[a-z0-9][a-z0-9._-]*[a-z0-9]/g) || []).concat(mails);\n  let logins = [...new Set(words.filter(w => /[._]/.test(w) && /[a-z].*[a-z]/.test(w) && !DOMAIN.test(w)))];\n  if (!logins.length && t.ai) logins = [...new Set((t.ai.logins || []).map(x => String(x).toLowerCase()).filter(x => /^[a-z0-9][a-z0-9._-]*[a-z0-9]$/.test(x) && /[._]/.test(x)))];\n  if (logins.length === 0) out.push({ ...base, kind: 'escalate', reason: 'не знайшов у задачі жодного логіну' });\n  else if (logins.length > maxCand) out.push({ ...base, kind: 'escalate', reason: `забагато логінів (${logins.length}), максимум ${maxCand}` });\n  else out.push({ ...base, kind: 'unlock', logins });\n}\nreturn out.map(json => ({ json }));"
+    "jsCode": "const saluteOf = t => {  // як звертається автор заявки, якою мовою пише і як його звати\n  const desc = String(t.description || '');\n  const strip = x => String(x || '').replace(/https?:\\/\\/\\S+|\\S+@\\S+|\\b[\\w-]+(?:[._][\\w-]+)+\\b/g, ' ');\n  const txt = strip(desc).length >= 15 ? strip(desc) : strip(String(t.subject || '') + ' ' + desc);\n  const cyr = (txt.match(/[\\u0400-\\u04FF]/g) || []).length, lat = (txt.match(/[A-Za-z]/g) || []).length;\n  const lang = lat >= 8 && cyr * 10 < lat ? 'en' : 'uk';  // англійська, якщо кирилиці майже немає\n  const s = (desc || String(t.subject || '')).toLowerCase().replace(/^[^\\p{L}\\p{N}]+/u, '').slice(0, 80);\n  let hi;\n  if (lang === 'en') hi = /^good\\s+morning/.test(s) ? 'Good morning' : /^good\\s+afternoon/.test(s) ? 'Good afternoon' : /^good\\s+evening/.test(s) ? 'Good evening' : /^hi\\b/.test(s) ? 'Hi' : 'Hello';\n  else if (/^(доброго\\s+ранку|добрий\\s+ранок|доброе\\s+утро)/.test(s)) hi = 'Доброго ранку';\n  else if (/^(добрий\\s+день|доброго\\s+дня|добрый\\s+день)/.test(s)) hi = 'Добрий день';\n  else if (/^(добрий\\s+вечір|доброго\\s+вечора|добрый\\s+вечер)/.test(s)) hi = 'Добрий вечір';\n  else if (/^(вітаю|здрастуйте|здравствуйте)/.test(s)) hi = 'Вітаю';\n  else hi = 'Привіт';\n  const nm = String((t.author && t.author.name) || '').trim().split(/\\s+/);\n  const name = nm.length === 2 && /^[\\p{L}'’-]+$/u.test(nm[1]) ? nm[1] : '';  // у Redmine ім'я у форматі «Прізвище Ім'я»; інші формати без імені\n  return { lang, hi, name };\n};\nconst cfg = $('Config').first().json;\nconst allowed = String(cfg.allowed_author_ids).split(',').map(s => s.trim()).filter(Boolean);\nconst everyone = allowed.includes('*');  // '*' у Config = заявки від усіх авторів (тест)\nconst maxCand = Number(cfg.max_candidates);\nconst dry = cfg.dry_run === true || cfg.dry_run === 'true';\n// у бойовому режимі заявки, яких торкався лише DRY RUN, обробляються заново\nconst seen = new Set($('[Data Table] Get Processed').all()\n  .filter(i => i.json.kind !== 'dispatch' && (dry || i.json.dry_run === false)).map(i => String(i.json.ticket_id)));\nconst DOMAIN = /\\.(com|net|org|tech|us|eu|io|ua|ai|dev|ru|pl)$/;\nconst out = [];\nfor (const t of ($input.first().json.issues || [])) {\n  // група «IT Адміни» (admins_group_id) = виконавець за замовчуванням, заявка ще нерозподілена\n  if ((t.assigned_to && String(t.assigned_to.id) !== String(cfg.admins_group_id)) || seen.has(String(t.id))) continue;\n  const text = `${t.subject}\\n${t.description || ''}`.toLowerCase();\n  // t.ai: підказка диспетчера (тип і логіни від ІІ), коли правила заявку не впізнали\n  const isUnlock = (/(розблок|разблок|unlock)/.test(text) && /(redmine|редмайн)/.test(text)) || !!(t.ai && t.ai.type === 'redmine_unlock');\n  if (!isUnlock) continue;\n  const base = { ticket_id: t.id, author_id: String(t.author && t.author.id), salute: saluteOf(t) };\n  if (!(everyone || allowed.includes(base.author_id))) {\n    out.push({ ...base, kind: 'escalate', reason: 'автор задачі не входить до списку координаторів' });\n    continue;\n  }\n  const mails = (text.match(/[\\w.+-]+@(?:example|example)\\.com/g) || []).map(m => m.split('@')[0]);\n  const clean = text.replace(/https?:\\/\\/\\S+/g, ' ').replace(/[\\w.+-]+@[\\w.-]+/g, ' ');\n  const words = (clean.match(/[a-z0-9][a-z0-9._-]*[a-z0-9]/g) || []).concat(mails);\n  let logins = [...new Set(words.filter(w => /[._]/.test(w) && /[a-z].*[a-z]/.test(w) && !DOMAIN.test(w)))];\n  if (!logins.length && t.ai) logins = [...new Set((t.ai.logins || []).map(x => String(x).toLowerCase()).filter(x => /^[a-z0-9][a-z0-9._-]*[a-z0-9]$/.test(x) && /[._]/.test(x)))];\n  if (logins.length === 0) out.push({ ...base, kind: 'escalate', reason: 'не знайшов у задачі жодного логіну' });\n  else if (logins.length > maxCand) out.push({ ...base, kind: 'escalate', reason: `забагато логінів (${logins.length}), максимум ${maxCand}` });\n  else out.push({ ...base, kind: 'unlock', logins });\n}\nreturn out.map(json => ({ json }));"
    },
    "type": "n8n-nodes-base.code",
    "typeVersion": 2,
@@ -181,7 +181,7 @@
     1100,
     0
    ],
-   "id": "f64254a3-050d-43e7-a4be-71e8ff74fbc5",
+   "id": "e2c581bb-9a2d-41b9-ae12-9b4e419ea814",
    "name": "Code: Parse Tickets"
   },
   {
@@ -246,7 +246,7 @@
     1320,
     0
    ],
-   "id": "ade55e23-c341-4de1-9a4a-5551911b5e80",
+   "id": "2cdf82e8-7ddc-4bd2-834d-438c2024abe3",
    "name": "Route by Type"
   },
   {
@@ -261,7 +261,7 @@
     1540,
     -120
    ],
-   "id": "db765a96-b972-48d4-8b95-e5fc380ad7e4",
+   "id": "0f660d14-d44d-4315-9972-71c3890fb646",
    "name": "Split Out Logins"
   },
   {
@@ -281,7 +281,7 @@
     1760,
     -120
    ],
-   "id": "08ba44e3-1334-41c0-b07c-42a11b67338c",
+   "id": "5bde006c-659f-4bef-80e5-00f029097f24",
    "name": "[Redmine] Find Locked User",
    "credentials": {
     "redmineApi": {
@@ -301,7 +301,7 @@
     1980,
     -120
    ],
-   "id": "c1402b8f-012a-44af-92a0-e7b54ce1a267",
+   "id": "4bbf961c-1496-4598-845b-24c319365e34",
    "name": "Code: Decide Unlock"
   },
   {
@@ -335,7 +335,7 @@
     2200,
     -120
    ],
-   "id": "92518fcc-53a1-441f-bced-f5a7565eaf61",
+   "id": "7b9fdc7b-9538-4be7-9995-f6e3ec6f6f41",
    "name": "Can Unlock Live?"
   },
   {
@@ -354,7 +354,7 @@
     2420,
     -220
    ],
-   "id": "e2e491cb-21ac-44e4-b98b-be781c43be48",
+   "id": "0f7e1015-619d-480a-aa4b-86c7f285e454",
    "name": "[Redmine] Unlock User",
    "credentials": {
     "redmineApi": {
@@ -402,7 +402,7 @@
     2640,
     -260
    ],
-   "id": "c2b88c55-ea96-4096-850f-aea5cf2856ff",
+   "id": "12a36826-b12a-4e1f-a2aa-82c13db736fb",
    "name": "Mark Unlocked"
   },
   {
@@ -449,7 +449,7 @@
     2640,
     -120
    ],
-   "id": "ba91a086-5f0f-4b52-9a3e-3bb19d0aea23",
+   "id": "52d42147-28c5-47d7-8a0a-781f6d120024",
    "name": "Mark Unlock Failed"
   },
   {
@@ -462,12 +462,12 @@
     2860,
     0
    ],
-   "id": "f9913fb2-cfeb-46d1-85ca-3370655289ef",
+   "id": "4d3ab446-20cd-4089-9244-20005edf8387",
    "name": "Merge Results"
   },
   {
    "parameters": {
-    "jsCode": "const cfg = $('Config').first().json;\nconst dry = cfg.dry_run === true || cfg.dry_run === 'true';\nconst g = {};\nfor (const { json: j } of $input.all()) {\n  const t = g[j.ticket_id] = g[j.ticket_id] || { id: j.ticket_id, unlock: [], failed: [], esc: null };\n  if (j.kind === 'escalate') t.esc = j.reason;\n  else if (j.action === 'unlock') {\n    if (dry || j.unlocked === 'yes') t.unlock.push(j.login);\n    else t.failed.push(`${j.login}: помилка розблокування (${j.error})`);\n  } else t.failed.push(`${j.login}: ${j.reason}`);\n}\nconst out = Object.values(g).map(t => {\n  const logins = t.unlock.join(', ');\n  const failed = t.failed.join('; ');\n  let note, kind, close = false, assign = false;\n  if (t.esc) {\n    kind = 'escalate'; assign = true;\n    note = `Агент: автоматично не обробляю. Причина: ${t.esc}. Передано адміністраторам.`;\n  } else if (t.unlock.length && !t.failed.length) {\n    kind = 'unlock'; close = true;\n    note = `Добрий день! Обліковий запис у Redmine розблоковано: ${logins}.`;\n  } else {\n    kind = 'escalate'; assign = true;\n    note = `Агент: розблоковано: ${logins || 'ніхто'}. Не вдалося: ${failed}. Потрібна перевірка людиною, задачу передано адміністраторам.`;\n  }\n  const details = t.esc || failed;\n  if (dry) {\n    note = `DRY RUN (змін не внесено). Агент ${kind === 'unlock' ? 'розблокував би ' + logins + ' і закрив би задачу' : 'передав би задачу адміністраторам'}. ${t.esc ? 'Причина: ' + t.esc : (failed ? 'Не вдалося б: ' + failed : '')}`.trim();\n    close = false; assign = false;\n  }\n  return { json: { ticket_id: t.id, kind, note, private: dry || kind === 'escalate', close, assign,\n                   logins, outcome: kind, details, dry_run: dry, at: new Date().toISOString() } };\n});\nreturn out;"
+    "jsCode": "const saluteOf = t => {  // як звертається автор заявки, якою мовою пише і як його звати\n  const desc = String(t.description || '');\n  const strip = x => String(x || '').replace(/https?:\\/\\/\\S+|\\S+@\\S+|\\b[\\w-]+(?:[._][\\w-]+)+\\b/g, ' ');\n  const txt = strip(desc).length >= 15 ? strip(desc) : strip(String(t.subject || '') + ' ' + desc);\n  const cyr = (txt.match(/[\\u0400-\\u04FF]/g) || []).length, lat = (txt.match(/[A-Za-z]/g) || []).length;\n  const lang = lat >= 8 && cyr * 10 < lat ? 'en' : 'uk';  // англійська, якщо кирилиці майже немає\n  const s = (desc || String(t.subject || '')).toLowerCase().replace(/^[^\\p{L}\\p{N}]+/u, '').slice(0, 80);\n  let hi;\n  if (lang === 'en') hi = /^good\\s+morning/.test(s) ? 'Good morning' : /^good\\s+afternoon/.test(s) ? 'Good afternoon' : /^good\\s+evening/.test(s) ? 'Good evening' : /^hi\\b/.test(s) ? 'Hi' : 'Hello';\n  else if (/^(доброго\\s+ранку|добрий\\s+ранок|доброе\\s+утро)/.test(s)) hi = 'Доброго ранку';\n  else if (/^(добрий\\s+день|доброго\\s+дня|добрый\\s+день)/.test(s)) hi = 'Добрий день';\n  else if (/^(добрий\\s+вечір|доброго\\s+вечора|добрый\\s+вечер)/.test(s)) hi = 'Добрий вечір';\n  else if (/^(вітаю|здрастуйте|здравствуйте)/.test(s)) hi = 'Вітаю';\n  else hi = 'Привіт';\n  const nm = String((t.author && t.author.name) || '').trim().split(/\\s+/);\n  const name = nm.length === 2 && /^[\\p{L}'’-]+$/u.test(nm[1]) ? nm[1] : '';  // у Redmine ім'я у форматі «Прізвище Ім'я»; інші формати без імені\n  return { lang, hi, name };\n};\nconst _kh = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Kyiv', hour: 'numeric', hourCycle: 'h23' }).format(new Date()));\n// звертання, мова й ім'я автора: з Code: Parse Tickets (флоу-інструменти) або з тексту заявки (флоу Apply)\nconst _salOf = id => {\n  try { const p = $('Code: Parse Tickets').all().find(x => String(x.json.ticket_id) === String(id)); if (p && p.json.salute) return p.json.salute; } catch (e) {}\n  try { for (const { json: h } of $('[Redmine] Get Ticket History').all()) { const i = h.issue || h; if (String(i.id) === String(id)) return saluteOf(i); } } catch (e) {}\n  return { lang: 'uk', hi: 'Привіт', name: '' };\n};\n// лише для публічних відповідей людям (укр. або англ. за мовою заявки); приватні нотатки для адміністраторів без привітань\nconst polite = (uk, en, id) => {\n  const s = _salOf(id), nm = s.name ? ', ' + s.name : '';\n  return s.lang === 'en'\n    ? `${s.hi}${nm}! Thank you for your request.\\n\\n${en || uk}\\n\\n${_kh < 18 ? 'Have a nice day!' : 'Have a nice evening!'}`\n    : `${s.hi}${nm}! Дякуємо за звернення.\\n\\n${uk}\\n\\n${_kh < 18 ? 'Гарного дня!' : 'Гарного вечора!'}`;\n};\nconst cfg = $('Config').first().json;\nconst dry = cfg.dry_run === true || cfg.dry_run === 'true';\nconst g = {};\nfor (const { json: j } of $input.all()) {\n  const t = g[j.ticket_id] = g[j.ticket_id] || { id: j.ticket_id, unlock: [], failed: [], esc: null };\n  if (j.kind === 'escalate') t.esc = j.reason;\n  else if (j.action === 'unlock') {\n    if (dry || j.unlocked === 'yes') t.unlock.push(j.login);\n    else t.failed.push(`${j.login}: помилка розблокування (${j.error})`);\n  } else t.failed.push(`${j.login}: ${j.reason}`);\n}\nconst out = Object.values(g).map(t => {\n  const logins = t.unlock.join(', ');\n  const failed = t.failed.join('; ');\n  let note, noteEn = '', kind, close = false, assign = false;\n  if (t.esc) {\n    kind = 'escalate'; assign = true;\n    note = `Агент: автоматично не обробляю. Причина: ${t.esc}. Передано адміністраторам.`;\n  } else if (t.unlock.length && !t.failed.length) {\n    kind = 'unlock'; close = true;\n    note = `Обліковий запис у Redmine розблоковано: ${logins}.`;\n    noteEn = `Your Redmine account has been unlocked: ${logins}.`;\n  } else {\n    kind = 'escalate'; assign = true;\n    note = `Агент: розблоковано: ${logins || 'ніхто'}. Не вдалося: ${failed}. Потрібна перевірка людиною, задачу передано адміністраторам.`;\n  }\n  const details = t.esc || failed;\n  if (dry) {\n    note = `DRY RUN (змін не внесено). Агент ${kind === 'unlock' ? 'розблокував би ' + logins + ' і закрив би задачу' : 'передав би задачу адміністраторам'}. ${t.esc ? 'Причина: ' + t.esc : (failed ? 'Не вдалося б: ' + failed : '')}`.trim();\n    close = false; assign = false;\n  }\n  return { json: { ticket_id: t.id, kind, note: (dry || kind === 'escalate') ? note : polite(note, noteEn, t.id), private: dry || kind === 'escalate', close, assign,\n                   logins, outcome: kind, details, dry_run: dry, at: new Date().toISOString() } };\n});\nreturn out;"
    },
    "type": "n8n-nodes-base.code",
    "typeVersion": 2,
@@ -475,7 +475,7 @@
     3080,
     0
    ],
-   "id": "177ba2e1-e41a-447b-a4be-911f55a7248e",
+   "id": "2721ec1d-6b94-42b2-94c1-e9ecb246e57f",
    "name": "Code: Build Report"
   },
   {
@@ -496,7 +496,7 @@
     3300,
     0
    ],
-   "id": "33597f34-98c5-4b2f-af98-f120327b7e7b",
+   "id": "9a3c0ca7-b783-4cca-9a19-ee4e77b601f6",
    "name": "[Redmine] Update Ticket",
    "credentials": {
     "redmineApi": {
@@ -601,7 +601,7 @@
     3520,
     0
    ],
-   "id": "73a5df28-7337-49df-8ac9-03793e92b25e",
+   "id": "039ad571-6aa7-4949-9c76-e9ce458fa080",
    "name": "[Data Table] Log Result"
   }
  ],

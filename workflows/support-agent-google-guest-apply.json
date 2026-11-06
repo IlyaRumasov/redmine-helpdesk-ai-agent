@@ -1,9 +1,9 @@
 {
- "name": "Support Agent: Google Guest Apply",
+ "name": "Автоматизатор: Google Guest Apply",
  "nodes": [
   {
    "parameters": {
-    "content": "## Support Agent: Google Guest Apply\nКожні 5 хв перевіряє заявки, для яких флоу Google Guest Access підготував видачу доступу (аудит: guest_access / awaiting_approval).\nПісля коментаря «Погоджую» від учасника «IT Адміни» (не автора заявки), за умови що гість у Google той самий:\nставить тимчасовий пароль (зі зміною при вході) і, якщо акаунт заблоковано без 2FA, генерує резервні коди; два листи на <логін>@example.com.\nЗакрита задача або 7 днів без підтвердження = скасовано. Збереження даних запусків вимкнено: пароль і коди не лишаються в n8n.\n\n**DRY_RUN** (Config): true = нічого не змінює й не надсилає.",
+    "content": "## Автоматизатор: Google Guest Apply\nКожні 5 хв перевіряє заявки, для яких флоу Google Guest Access підготував видачу доступу (аудит: guest_access / awaiting_approval).\nПісля коментаря «Погоджую» від учасника «IT Адміни» (не автора заявки), за умови що гість у Google той самий:\nставить тимчасовий пароль (зі зміною при вході) і, якщо акаунт заблоковано без 2FA, генерує резервні коди; два листи на <логін>@example.com.\nЗакрита задача або 7 днів без підтвердження = скасовано. Збереження даних запусків вимкнено: пароль і коди не лишаються в n8n.\n\n**DRY_RUN** (Config): true = нічого не змінює й не надсилає.",
     "height": 250,
     "width": 700
    },
@@ -13,7 +13,7 @@
     -200,
     -340
    ],
-   "id": "dae7578e-8fc1-42e1-86bc-135912fbb622",
+   "id": "938ea059-4682-4949-96ce-9907167c90e7",
    "name": "Sticky Note"
   },
   {
@@ -33,7 +33,7 @@
     0,
     0
    ],
-   "id": "90878267-8f19-47e5-ae1b-957cb8103f7b",
+   "id": "3e003ea3-ac8b-4d4b-bd1c-d08d21e90970",
    "name": "Every 5 Min"
   },
   {
@@ -92,7 +92,7 @@
     220,
     0
    ],
-   "id": "b812afcf-b068-471b-95b0-312d1948c1bd",
+   "id": "fe82d0e5-7385-4c02-9264-f97402e782b3",
    "name": "Config"
   },
   {
@@ -114,7 +114,7 @@
     440,
     0
    ],
-   "id": "344b560c-7e23-48a9-8619-fa040551276b",
+   "id": "0242bffd-a540-4244-a63e-c22caf282a2c",
    "name": "[Data Table] Get Log",
    "alwaysOutputData": true
   },
@@ -128,7 +128,7 @@
     660,
     0
    ],
-   "id": "274dfde4-6c3a-4a7e-980c-3317c40c18b9",
+   "id": "14957609-82e6-4ccc-97f9-00a3dc789308",
    "name": "Code: Match Pending"
   },
   {
@@ -152,7 +152,7 @@
     880,
     0
    ],
-   "id": "25147f01-d886-4809-aa3d-00b1b2a51598",
+   "id": "7d019622-297f-489f-a412-75520cc7a5f3",
    "name": "[Google] Get Guest",
    "credentials": {
     "googleApi": {
@@ -177,7 +177,7 @@
     1100,
     0
    ],
-   "id": "1609a9f5-85d4-4795-8490-ab7b50fb0c17",
+   "id": "504f70e9-f3ee-4362-8d41-6d8d699b6e78",
    "name": "[Redmine] Get Ticket History",
    "credentials": {
     "redmineApi": {
@@ -203,7 +203,7 @@
     1320,
     0
    ],
-   "id": "a07f0ca7-b81b-4119-a0d9-c4314dcb1f36",
+   "id": "d26d679f-5c56-4c29-bb1a-450d6b5f51d8",
    "name": "[Redmine] Get IT Admins",
    "credentials": {
     "redmineApi": {
@@ -224,7 +224,7 @@
     1540,
     0
    ],
-   "id": "f7539ee2-dfeb-477f-9e3a-c6b7445ab410",
+   "id": "1c52bcd3-babc-4aee-b625-45acbb9cbb71",
    "name": "Code: Decide Apply"
   },
   {
@@ -258,7 +258,7 @@
     1760,
     0
    ],
-   "id": "fa96d79e-b18d-4490-8847-84e2f0f229b0",
+   "id": "83709ec8-5b44-46f2-8ec0-fa8a14c6956b",
    "name": "Apply Now?"
   },
   {
@@ -274,7 +274,7 @@
     1980,
     -200
    ],
-   "id": "37e83f24-8ecd-4bb0-876a-f8ddc2be476e",
+   "id": "4a8aab65-7a3b-44cf-9a40-7c80b976fcb1",
    "name": "[Crypto] Random Bytes"
   },
   {
@@ -288,7 +288,7 @@
     2090,
     -200
    ],
-   "id": "742276f3-1661-4727-818a-ff93d885cb90",
+   "id": "0fcd7f59-11c4-4e06-a5a0-9dbf216dcc3e",
    "name": "Code: Generate Secrets",
    "onError": "continueErrorOutput"
   },
@@ -316,7 +316,7 @@
     2200,
     -200
    ],
-   "id": "ee633f1c-b9f3-403b-901d-0501d324b611",
+   "id": "f01a6bfe-8c18-47c8-b97a-024109209372",
    "name": "[Google] Set Temp Password",
    "credentials": {
     "googleApi": {
@@ -357,7 +357,7 @@
     2420,
     -200
    ],
-   "id": "24c84628-391b-4a3a-b208-18783f7eb5be",
+   "id": "99071c99-f50a-43c1-9ec9-b5429a34c94e",
    "name": "Need Codes?"
   },
   {
@@ -374,7 +374,7 @@
     2640,
     -320
    ],
-   "id": "58dd2f09-7001-4ac8-8f84-498f27cb278f",
+   "id": "8e706248-da29-4986-a9a9-9fd7288a0346",
    "name": "[Google] Generate Codes",
    "credentials": {
     "googleApi": {
@@ -383,6 +383,20 @@
     }
    },
    "onError": "continueErrorOutput"
+  },
+  {
+   "parameters": {
+    "amount": 10,
+    "unit": "seconds"
+   },
+   "type": "n8n-nodes-base.wait",
+   "typeVersion": 1.1,
+   "position": [
+    2750,
+    -320
+   ],
+   "id": "7ce5ebf0-d435-4944-9f0a-2cd908913167",
+   "name": "Wait: Codes Ready"
   },
   {
    "parameters": {
@@ -405,7 +419,7 @@
     2860,
     -320
    ],
-   "id": "2c7e86cf-8bcd-44b0-a9ae-7fc742200918",
+   "id": "10596a56-f4c6-410e-95e4-3a371b2345e1",
    "name": "[Google] List Codes",
    "credentials": {
     "googleApi": {
@@ -426,7 +440,7 @@
     3080,
     -200
    ],
-   "id": "dd222e08-6760-4d98-99f9-d5505bd676e9",
+   "id": "90c0b080-aeb2-49fd-b95e-b8ebfe18b99f",
    "name": "Code: Build Mails"
   },
   {
@@ -460,7 +474,7 @@
     3300,
     -200
    ],
-   "id": "eb88ee84-2c39-41d9-a113-e483bd20fc06",
+   "id": "fb63c7ed-e676-4a1d-9cc5-b4ae26cc9d98",
    "name": "Mails Ready?"
   },
   {
@@ -480,7 +494,7 @@
     3520,
     -300
    ],
-   "id": "24458e1f-5749-4f2b-9549-b15f126a4703",
+   "id": "15f48127-0d15-42b3-88b4-667c35aac14e",
    "name": "[Mail] Send Password",
    "credentials": {
     "smtp": {
@@ -488,7 +502,10 @@
      "name": "IT mailbox SMTP"
     }
    },
-   "onError": "continueErrorOutput"
+   "onError": "continueErrorOutput",
+   "retryOnFail": true,
+   "maxTries": 4,
+   "waitBetweenTries": 20000
   },
   {
    "parameters": {
@@ -521,7 +538,7 @@
     3740,
     -300
    ],
-   "id": "bc9c408c-a7b9-4715-9b41-0705cabaaf86",
+   "id": "f624f3ba-c267-4859-aa22-5e906487acb4",
    "name": "Send Codes Mail?"
   },
   {
@@ -541,7 +558,7 @@
     3960,
     -400
    ],
-   "id": "9269056e-c697-41b3-a717-448c6f7d7353",
+   "id": "90e278e0-f1ca-4c88-a406-71deef5a0236",
    "name": "[Mail] Send Codes",
    "credentials": {
     "smtp": {
@@ -549,7 +566,10 @@
      "name": "IT mailbox SMTP"
     }
    },
-   "onError": "continueErrorOutput"
+   "onError": "continueErrorOutput",
+   "retryOnFail": true,
+   "maxTries": 4,
+   "waitBetweenTries": 20000
   },
   {
    "parameters": {
@@ -563,7 +583,7 @@
     4180,
     -360
    ],
-   "id": "bca1b801-66a1-4370-9bac-c8b2f2025453",
+   "id": "56bcd475-974b-4ba2-a11d-19e2294b6367",
    "name": "Mark Done"
   },
   {
@@ -578,7 +598,7 @@
     4180,
     -120
    ],
-   "id": "3a6df2ab-9379-48aa-bf68-d50ba1ed8e2b",
+   "id": "7b3406d7-8995-4870-84a2-8be34d4c479b",
    "name": "Mark Failed"
   },
   {
@@ -591,12 +611,12 @@
     4400,
     0
    ],
-   "id": "1a2a3430-373f-4462-a77f-1ee01205bde8",
+   "id": "a68a2d00-924a-4ea6-823d-edc39dd01375",
    "name": "Merge Results"
   },
   {
    "parameters": {
-    "jsCode": "const cfg = $('Config').first().json;\nreturn $input.all().map(({ json: j }) => {\n  const p = j.plan || {};\n  const failed = j.done === 'no';\n  let note, outcome, close = false, assign = false, details = j.reason || '';\n  if (j.action === 'apply' && !failed) {\n    outcome = 'applied'; close = true;\n    details = p.send_codes ? 'тимчасовий пароль і резервні коди надіслано' : 'тимчасовий пароль надіслано';\n    note = `Вітаю. ${p.send_codes ? 'Тимчасовий пароль і резервні коди' : 'Тимчасовий пароль'} для гостьового акаунту ${p.guest} надіслано на робочу пошту ${p.work_mail}`\n      + `${p.send_codes ? ' окремими листами' : ''}. Увійдіть під повною адресою гостьового акаунту, задайте новий пароль${p.send_codes ? ', на другому кроці оберіть «Інший спосіб» -> «Резервний код»' : ''} і одразу налаштуйте двоетапну перевірку.`;\n  } else if (j.action === 'cancel') {\n    outcome = 'cancelled';\n    note = `Агент: видачу доступу до гостьового акаунту скасовано (${details}). Якщо вона ще потрібна, створіть нову заявку.`;\n  } else {\n    outcome = 'escalate'; assign = true;\n    if (failed) details = `помилка під час видачі: ${j.error}. Увага: тимчасовий пароль міг бути вже встановлений, але лист не дійшов; потрібно видати доступ вручну`;\n    note = `Агент: видачу доступу не виконано. Причина: ${details}. Потрібна перевірка людиною.`;\n  }\n  if (j.dry_run) {\n    note = `DRY RUN (змін не внесено). Агент ${j.action === 'apply' ? 'видав би доступ до ' + p.guest + ' (' + (p.send_codes ? 'пароль + коди' : 'пароль') + ') на ' + p.work_mail : 'не виконав би видачу. Причина: ' + details}.`;\n    close = false; assign = false;\n  }\n  return { json: { ticket_id: j.ticket_id, kind: 'guest_access', note, private: j.dry_run || outcome !== 'applied', close, assign,\n                   logins: p.login || '', outcome: j.dry_run ? 'dry_' + outcome : outcome, details, payload: JSON.stringify(p), dry_run: j.dry_run, at: new Date().toISOString() } };\n});"
+    "jsCode": "const saluteOf = t => {  // як звертається автор заявки, якою мовою пише і як його звати\n  const desc = String(t.description || '');\n  const strip = x => String(x || '').replace(/https?:\\/\\/\\S+|\\S+@\\S+|\\b[\\w-]+(?:[._][\\w-]+)+\\b/g, ' ');\n  const txt = strip(desc).length >= 15 ? strip(desc) : strip(String(t.subject || '') + ' ' + desc);\n  const cyr = (txt.match(/[\\u0400-\\u04FF]/g) || []).length, lat = (txt.match(/[A-Za-z]/g) || []).length;\n  const lang = lat >= 8 && cyr * 10 < lat ? 'en' : 'uk';  // англійська, якщо кирилиці майже немає\n  const s = (desc || String(t.subject || '')).toLowerCase().replace(/^[^\\p{L}\\p{N}]+/u, '').slice(0, 80);\n  let hi;\n  if (lang === 'en') hi = /^good\\s+morning/.test(s) ? 'Good morning' : /^good\\s+afternoon/.test(s) ? 'Good afternoon' : /^good\\s+evening/.test(s) ? 'Good evening' : /^hi\\b/.test(s) ? 'Hi' : 'Hello';\n  else if (/^(доброго\\s+ранку|добрий\\s+ранок|доброе\\s+утро)/.test(s)) hi = 'Доброго ранку';\n  else if (/^(добрий\\s+день|доброго\\s+дня|добрый\\s+день)/.test(s)) hi = 'Добрий день';\n  else if (/^(добрий\\s+вечір|доброго\\s+вечора|добрый\\s+вечер)/.test(s)) hi = 'Добрий вечір';\n  else if (/^(вітаю|здрастуйте|здравствуйте)/.test(s)) hi = 'Вітаю';\n  else hi = 'Привіт';\n  const nm = String((t.author && t.author.name) || '').trim().split(/\\s+/);\n  const name = nm.length === 2 && /^[\\p{L}'’-]+$/u.test(nm[1]) ? nm[1] : '';  // у Redmine ім'я у форматі «Прізвище Ім'я»; інші формати без імені\n  return { lang, hi, name };\n};\nconst _kh = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Kyiv', hour: 'numeric', hourCycle: 'h23' }).format(new Date()));\n// звертання, мова й ім'я автора: з Code: Parse Tickets (флоу-інструменти) або з тексту заявки (флоу Apply)\nconst _salOf = id => {\n  try { const p = $('Code: Parse Tickets').all().find(x => String(x.json.ticket_id) === String(id)); if (p && p.json.salute) return p.json.salute; } catch (e) {}\n  try { for (const { json: h } of $('[Redmine] Get Ticket History').all()) { const i = h.issue || h; if (String(i.id) === String(id)) return saluteOf(i); } } catch (e) {}\n  return { lang: 'uk', hi: 'Привіт', name: '' };\n};\n// лише для публічних відповідей людям (укр. або англ. за мовою заявки); приватні нотатки для адміністраторів без привітань\nconst polite = (uk, en, id) => {\n  const s = _salOf(id), nm = s.name ? ', ' + s.name : '';\n  return s.lang === 'en'\n    ? `${s.hi}${nm}! Thank you for your request.\\n\\n${en || uk}\\n\\n${_kh < 18 ? 'Have a nice day!' : 'Have a nice evening!'}`\n    : `${s.hi}${nm}! Дякуємо за звернення.\\n\\n${uk}\\n\\n${_kh < 18 ? 'Гарного дня!' : 'Гарного вечора!'}`;\n};\nconst cfg = $('Config').first().json;\nreturn $input.all().map(({ json: j }) => {\n  const p = j.plan || {};\n  const failed = j.done === 'no';\n  let note, noteEn = '', outcome, close = false, assign = false, details = j.reason || '';\n  if (j.action === 'apply' && !failed) {\n    outcome = 'applied'; close = true;\n    details = p.send_codes ? 'тимчасовий пароль і резервні коди надіслано' : 'тимчасовий пароль надіслано';\n    note = `${p.send_codes ? 'Тимчасовий пароль і резервні коди' : 'Тимчасовий пароль'} для гостьового акаунту ${p.guest} надіслано на робочу пошту ${p.work_mail}`\n      + `${p.send_codes ? ' окремими листами' : ''}. Увійдіть під повною адресою гостьового акаунту, задайте новий пароль${p.send_codes ? ', на другому кроці оберіть «Інший спосіб» -> «Резервний код»' : ''} і одразу налаштуйте двоетапну перевірку.`;\n    noteEn = `${p.send_codes ? 'A temporary password and backup codes' : 'A temporary password'} for the guest account ${p.guest} ${p.send_codes ? 'have' : 'has'} been sent to your work address ${p.work_mail}${p.send_codes ? ' in separate emails' : ''}. Sign in with the full guest account address, set a new password${p.send_codes ? ', and at the second step choose \"Try another way\" -> \"Enter a backup code\"' : ''}, then set up 2-Step Verification right away.`;\n  } else if (j.action === 'cancel') {\n    outcome = 'cancelled';\n    note = `Агент: видачу доступу до гостьового акаунту скасовано (${details}). Якщо вона ще потрібна, створіть нову заявку.`;\n  } else {\n    outcome = 'escalate'; assign = true;\n    if (failed) details = `помилка під час видачі: ${j.error}. Увага: тимчасовий пароль міг бути вже встановлений, але лист не дійшов; потрібно видати доступ вручну`;\n    note = `Агент: видачу доступу не виконано. Причина: ${details}. Потрібна перевірка людиною.`;\n  }\n  if (j.dry_run) {\n    note = `DRY RUN (змін не внесено). Агент ${j.action === 'apply' ? 'видав би доступ до ' + p.guest + ' (' + (p.send_codes ? 'пароль + коди' : 'пароль') + ') на ' + p.work_mail : 'не виконав би видачу. Причина: ' + details}.`;\n    close = false; assign = false;\n  }\n  return { json: { ticket_id: j.ticket_id, kind: 'guest_access', note: (j.dry_run || outcome !== 'applied') ? note : polite(note, noteEn, j.ticket_id), private: j.dry_run || outcome !== 'applied', close, assign,\n                   logins: p.login || '', outcome: j.dry_run ? 'dry_' + outcome : outcome, details, payload: JSON.stringify(p), dry_run: j.dry_run, at: new Date().toISOString() } };\n});"
    },
    "type": "n8n-nodes-base.code",
    "typeVersion": 2,
@@ -604,7 +624,7 @@
     4620,
     0
    ],
-   "id": "0031a2c3-fdac-4941-bc85-a176d778051f",
+   "id": "e658ae6a-dc56-45ad-8b54-318a879cd314",
    "name": "Code: Build Report"
   },
   {
@@ -625,7 +645,7 @@
     4840,
     0
    ],
-   "id": "411e3df2-eb4a-49c8-b75f-df750ba6de24",
+   "id": "b732b14b-114e-4c31-a05e-90cbdb531dc9",
    "name": "[Redmine] Update Ticket",
    "credentials": {
     "redmineApi": {
@@ -740,7 +760,7 @@
     5060,
     0
    ],
-   "id": "78d5ba96-f7ae-49ca-892e-d173745ad493",
+   "id": "ce74aad3-2c7b-4d5a-87b2-4e979fc7eb9a",
    "name": "[Data Table] Log Result"
   }
  ],
@@ -855,7 +875,7 @@
    "main": [
     [
      {
-      "node": "[Google] List Codes",
+      "node": "Wait: Codes Ready",
       "type": "main",
       "index": 0
      }
@@ -863,6 +883,17 @@
     [
      {
       "node": "Mark Failed",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Wait: Codes Ready": {
+   "main": [
+    [
+     {
+      "node": "[Google] List Codes",
       "type": "main",
       "index": 0
      }

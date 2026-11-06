@@ -1,0 +1,355 @@
+{
+ "name": "Сервіс: Advisor Feedback",
+ "nodes": [
+  {
+   "parameters": {
+    "content": "## Автоматизатор: Advisor Feedback\nРаз на добу збирає оцінки підказок радника: коментарі інженерів «корисно» або «не те» в заявках, де радник залишив приватну підказку.\nПише в таблицю support_agent_advisor_feedback (журнал коментаря унікальний, дублів нема). Redmine лише читає.",
+    "height": 150,
+    "width": 620
+   },
+   "type": "n8n-nodes-base.stickyNote",
+   "typeVersion": 1,
+   "position": [
+    -200,
+    -260
+   ],
+   "id": "8e3402cf-2488-465e-8772-50dd3b1307b0",
+   "name": "Sticky Note"
+  },
+  {
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "field": "days",
+       "daysInterval": 1,
+       "triggerAtHour": 8
+      }
+     ]
+    }
+   },
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.2,
+   "position": [
+    0,
+    0
+   ],
+   "id": "b612a5bc-663c-47dc-b51b-27762be56ec1",
+   "name": "Every Day 08:00"
+  },
+  {
+   "parameters": {
+    "assignments": {
+     "assignments": [
+      {
+       "id": "a1",
+       "name": "advisor_prefix",
+       "value": "Радник (етап 1",
+       "type": "string"
+      },
+      {
+       "id": "a2",
+       "name": "days_back",
+       "value": 30,
+       "type": "number"
+      },
+      {
+       "id": "a3",
+       "name": "max_tickets",
+       "value": 60,
+       "type": "number"
+      }
+     ]
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-base.set",
+   "typeVersion": 3.4,
+   "position": [
+    220,
+    0
+   ],
+   "id": "c584dd83-381d-43da-ba74-0e0233ba9a44",
+   "name": "Config"
+  },
+  {
+   "parameters": {
+    "resource": "row",
+    "operation": "get",
+    "dataTableId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "<AUDIT_TABLE>"
+    },
+    "returnAll": true,
+    "matchType": "anyCondition",
+    "filters": {}
+   },
+   "type": "n8n-nodes-base.dataTable",
+   "typeVersion": 1.1,
+   "position": [
+    440,
+    0
+   ],
+   "id": "433c3c44-b20b-4348-a6b9-c8e9ecf213d2",
+   "name": "[Data Table] Get Audit",
+   "alwaysOutputData": true
+  },
+  {
+   "parameters": {
+    "resource": "row",
+    "operation": "get",
+    "dataTableId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "<FEEDBACK_TABLE>"
+    },
+    "returnAll": true,
+    "matchType": "anyCondition",
+    "filters": {}
+   },
+   "type": "n8n-nodes-base.dataTable",
+   "typeVersion": 1.1,
+   "position": [
+    660,
+    0
+   ],
+   "id": "b52f21e9-10df-4647-8d8f-4692014956c7",
+   "name": "[Data Table] Get Feedback",
+   "alwaysOutputData": true,
+   "executeOnce": true
+  },
+  {
+   "parameters": {
+    "jsCode": "const cfg = $('Config').first().json;\nconst since = Date.now() - Number(cfg.days_back) * 86400000;\nconst ids = [];\nfor (const { json: r } of $('[Data Table] Get Audit').all()) {\n  if (r.kind === 'advisor' && r.dry_run === false && r.ticket_id && Date.parse(r.at) >= since && !ids.includes(r.ticket_id)) ids.push(r.ticket_id);\n}\nreturn ids.slice(0, Number(cfg.max_tickets)).map(id => ({ json: { ticket_id: id } }));"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    880,
+    0
+   ],
+   "id": "aaf663fb-0d6e-477c-a144-87743aabff86",
+   "name": "Code: Tickets To Check"
+  },
+  {
+   "parameters": {
+    "operation": "get",
+    "issueId": "={{ $json.ticket_id }}",
+    "include": [
+     "journals"
+    ],
+    "options": {}
+   },
+   "type": "n8n-nodes-redmine.redmine",
+   "typeVersion": 1,
+   "position": [
+    1100,
+    0
+   ],
+   "id": "5f86cde1-5c57-475f-9928-344dc073eb83",
+   "name": "[Redmine] Get Ticket History",
+   "credentials": {
+    "redmineApi": {
+     "id": "<REDMINE_CRED>",
+     "name": "Redmine <ENV> account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "jsCode": "const cfg = $('Config').first().json;\nconst have = new Set($('[Data Table] Get Feedback').all().map(i => String(i.json.journal_id)));\nconst rows = [];\nfor (const { json: h } of $input.all()) {\n  const issue = h.issue || h;\n  if (!issue.id) continue;\n  const js = (issue.journals || []).slice().sort((a, b) => String(a.created_on).localeCompare(String(b.created_on)));\n  const adv = js.find(j => String(j.notes || '').startsWith(cfg.advisor_prefix));\n  if (!adv) continue;\n  for (const j of js) {\n    if (String(j.created_on) <= String(adv.created_on) || have.has(String(j.id))) continue;\n    if (j.user && adv.user && String(j.user.id) === String(adv.user.id)) continue;  // не оцінки самого бота\n    const m = String(j.notes || '').trim().toLowerCase().match(/^(корисно|не те)(?=$|[\\s.,!:;)\\-–])/);\n    if (!m) continue;\n    rows.push({ json: { journal_id: j.id, ticket_id: issue.id, rating: m[1] === 'корисно' ? 'up' : 'down', comment: String(j.notes).trim().slice(0, 300),\n                        user_id: j.user ? j.user.id : 0, at: j.created_on, collected_at: new Date().toISOString() } });\n  }\n}\nreturn rows;"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1320,
+    0
+   ],
+   "id": "1030ff91-fc69-4709-aba6-e423f4774d4b",
+   "name": "Code: Find Ratings"
+  },
+  {
+   "parameters": {
+    "resource": "row",
+    "operation": "insert",
+    "dataTableId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "<FEEDBACK_TABLE>"
+    },
+    "columns": {
+     "mappingMode": "defineBelow",
+     "matchingColumns": [],
+     "value": {
+      "journal_id": "={{ $json.journal_id }}",
+      "ticket_id": "={{ $json.ticket_id }}",
+      "rating": "={{ $json.rating }}",
+      "comment": "={{ $json.comment }}",
+      "user_id": "={{ $json.user_id }}",
+      "at": "={{ $json.at }}",
+      "collected_at": "={{ $json.collected_at }}"
+     },
+     "schema": [
+      {
+       "id": "journal_id",
+       "displayName": "journal_id",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "number",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "ticket_id",
+       "displayName": "ticket_id",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "number",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "rating",
+       "displayName": "rating",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "comment",
+       "displayName": "comment",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "user_id",
+       "displayName": "user_id",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "number",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "at",
+       "displayName": "at",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "collected_at",
+       "displayName": "collected_at",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      }
+     ]
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-base.dataTable",
+   "typeVersion": 1.1,
+   "position": [
+    1540,
+    0
+   ],
+   "id": "df98a293-4d23-409a-8d63-4e9dbb97e2cd",
+   "name": "[Data Table] Save Feedback"
+  }
+ ],
+ "connections": {
+  "Every Day 08:00": {
+   "main": [
+    [
+     {
+      "node": "Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Config": {
+   "main": [
+    [
+     {
+      "node": "[Data Table] Get Audit",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Data Table] Get Audit": {
+   "main": [
+    [
+     {
+      "node": "[Data Table] Get Feedback",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Data Table] Get Feedback": {
+   "main": [
+    [
+     {
+      "node": "Code: Tickets To Check",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Code: Tickets To Check": {
+   "main": [
+    [
+     {
+      "node": "[Redmine] Get Ticket History",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Redmine] Get Ticket History": {
+   "main": [
+    [
+     {
+      "node": "Code: Find Ratings",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Code: Find Ratings": {
+   "main": [
+    [
+     {
+      "node": "[Data Table] Save Feedback",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1",
+  "timezone": "Europe/Kyiv"
+ }
+}

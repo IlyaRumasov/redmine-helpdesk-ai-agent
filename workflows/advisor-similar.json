@@ -1,5 +1,5 @@
 {
- "name": "[PILOT] Advisor Tool: Similar Tickets",
+ "name": "Радник (інструмент): Similar Tickets",
  "nodes": [
   {
    "parameters": {
@@ -17,7 +17,7 @@
     0,
     0
    ],
-   "id": "a30bce08-c768-44a3-9f19-1a8f4f9a4c3c",
+   "id": "93b7547c-c00b-4952-8ee6-75f358d38665",
    "name": "When Called by Agent"
   },
   {
@@ -30,7 +30,7 @@
     220,
     0
    ],
-   "id": "8bd1e41b-7c21-4811-82a5-be338c1bf725",
+   "id": "2c89982a-04de-4f51-bee7-158a1ef69d97",
    "name": "Code: Prepare"
   },
   {
@@ -57,7 +57,7 @@
     440,
     0
    ],
-   "id": "99fc75e0-bc0d-46b2-9dd2-ef89090bfcb4",
+   "id": "aead7929-f42b-43d5-86c9-9d0539514fd5",
    "name": "[Gemini] Embed Query",
    "credentials": {
     "googlePalmApi": {
@@ -69,7 +69,7 @@
   },
   {
    "parameters": {
-    "jsCode": "const body = ($input.first().json.body || {});\nconst v = (body.embedding || {}).values;\nif (!v) throw new Error('немає вектора запиту');\nreturn [{ json: { search: { vector: v, limit: 4, with_payload: true } } }];"
+    "jsCode": "const body = ($input.first().json.body || {});\nconst v = (body.embedding || {}).values;\nif (!v) throw new Error('немає вектора запиту');\nconst pb = {\"key\": \"metadata.source\", \"match\": {\"value\": \"playbook\"}};\nreturn [{ json: { search: { searches: [\n  { vector: v, limit: 3, with_payload: true, filter: { must_not: [pb] } },\n  { vector: v, limit: 3, with_payload: true, filter: { must: [pb] } } ] } } }];"
    },
    "type": "n8n-nodes-base.code",
    "typeVersion": 2,
@@ -77,13 +77,13 @@
     660,
     0
    ],
-   "id": "90cee6be-a972-45dd-a33a-ce220d2197e9",
+   "id": "9b9a0a10-c1fb-4f8f-b10f-0d5b99d54261",
    "name": "Code: Search Body"
   },
   {
    "parameters": {
     "method": "POST",
-    "url": "http://<QDRANT_HOST>:6333/collections/it_support_kb/points/search",
+    "url": "http://<QDRANT_HOST>:6333/collections/it_support_kb/points/search/batch",
     "authentication": "predefinedCredentialType",
     "nodeCredentialType": "qdrantApi",
     "options": {
@@ -104,7 +104,7 @@
     880,
     0
    ],
-   "id": "50906c89-7ab9-412d-b8bf-ac16ee7f9515",
+   "id": "3d0b6f89-5911-40e4-86a7-d6fe12363de2",
    "name": "[Qdrant] Search",
    "credentials": {
     "qdrantApi": {
@@ -116,7 +116,7 @@
   },
   {
    "parameters": {
-    "jsCode": "if (!$('Code: Prepare').first().json.ok) return [{ json: { ok: false, error: 'запит надто короткий' } }];\nconst b = $input.first().json.body || {};\nif (!Array.isArray(b.result)) return [{ json: { ok: false, error: 'пошук недоступний' } }];\nreturn [{ json: { ok: true, results: b.result.map(r => { const m = (r.payload || {}).metadata || {}; return { ticket: m.ticket, score: r.score, text: String(r.payload.content || '').slice(0, 900) }; }) } }];"
+    "jsCode": "if (!$('Code: Prepare').first().json.ok) return [{ json: { ok: false, error: 'запит надто короткий' } }];\nconst b = $input.first().json.body || {};\nif (!Array.isArray(b.result) || b.result.length < 2) return [{ json: { ok: false, error: 'пошук недоступний' } }];\nconst pick = r => { const m = (r.payload || {}).metadata || {}; return { ticket: m.ticket, score: r.score, text: String(r.payload.content || '').slice(0, 900) }; };\nreturn [{ json: { ok: true, results: (b.result[0] || []).map(pick), approved_playbooks: (b.result[1] || []).map(pick) } }];"
    },
    "type": "n8n-nodes-base.code",
    "typeVersion": 2,
@@ -124,12 +124,12 @@
     1100,
     0
    ],
-   "id": "ed32d706-7795-4432-a1ee-a9b2bb7bb7d8",
+   "id": "ae7468f5-e66e-4fda-b380-dd59fa0490fb",
    "name": "Code: Result"
   },
   {
    "parameters": {
-    "content": "## Advisor Tool: Similar Tickets\nПошук за змістом у базі обезличених вирішених заявок (it_support_kb). Лише читання; на виході номер заявки, близькість і уривок.",
+    "content": "## Advisor Tool: Similar Tickets\nПошук за змістом у базі обезличених вирішених заявок (it_support_kb). Лише читання; одним запитом: 3 схожі заявки (results) і 2 затверджені плейбуки (approved_playbooks, ticket = playbook-N).",
     "height": 160,
     "width": 520
    },
@@ -139,7 +139,7 @@
     -60,
     -260
    ],
-   "id": "03cb202d-c09d-4968-a6a3-afa05ea3155b",
+   "id": "d4caeb08-f448-4e10-aea6-6f0725ce8c39",
    "name": "Sticky Note"
   }
  ],

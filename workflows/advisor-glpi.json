@@ -1,5 +1,5 @@
 {
- "name": "[PILOT] Advisor Tool: GLPI Equipment",
+ "name": "Радник (інструмент): GLPI Equipment",
  "nodes": [
   {
    "parameters": {
@@ -17,7 +17,7 @@
     0,
     0
    ],
-   "id": "341df2f6-3c64-4782-9277-ffb9489d3d89",
+   "id": "13233c8a-e44a-4b1e-8e5e-116994c0f541",
    "name": "When Called by Agent"
   },
   {
@@ -30,7 +30,7 @@
     220,
     0
    ],
-   "id": "eef0872d-3d6a-416e-9205-e366196f38de",
+   "id": "db58f005-819b-4a9e-8dd6-0bc59f4073dc",
    "name": "Code: Urls"
   },
   {
@@ -53,7 +53,7 @@
     440,
     0
    ],
-   "id": "7a6bd1c7-bbde-409b-8ad2-35efd3eae772",
+   "id": "bed12ea2-6ab1-4478-8064-c4e197bffda8",
    "name": "[GLPI] Open Session",
    "credentials": {
     "httpCustomAuth": {
@@ -91,7 +91,7 @@
     660,
     0
    ],
-   "id": "24e08a2d-2d08-4d4a-8f27-2ddb8f0d49d2",
+   "id": "8d8d43fa-f2dd-49d3-b350-814be3d91522",
    "name": "[GLPI] Find User",
    "credentials": {
     "httpCustomAuth": {
@@ -130,7 +130,7 @@
     880,
     0
    ],
-   "id": "d368f045-79ef-400d-a860-19bb3f4cdf7f",
+   "id": "ad6d7952-4833-43f4-85b6-c531353779c8",
    "name": "[GLPI] Find Assets",
    "credentials": {
     "httpCustomAuth": {
@@ -150,7 +150,7 @@
     1100,
     0
    ],
-   "id": "d7becf97-755d-4ded-9c73-193652ec9a4b",
+   "id": "77138ffc-a084-4630-84d3-c555956bd0a5",
    "name": "Code: Result"
   },
   {
@@ -165,7 +165,7 @@
     -60,
     -260
    ],
-   "id": "bf1500ab-3003-4991-b9d9-80964e9c54e4",
+   "id": "c7cca757-dbe0-4c8c-adb2-54b122be339e",
    "name": "Sticky Note"
   }
  ],

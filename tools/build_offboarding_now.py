@@ -1,4 +1,4 @@
-"""Збирає workflows/support-agent-offboarding-now.json (флоу «Support Agent: Offboarding Now»).
+"""Збирає workflows/support-agent-offboarding-now.json (флоу «Автоматизатор: Offboarding Now»).
 
 Кожні 5 хв дивиться заявки на звільнення (проєкт Starter|Leaver), змінені за останні хвилини. Якщо учасник «IT Адміни»
 написав у заявці коментар «Обробити зараз», агент одразу викликає відповідний флоу оффбордингу
@@ -63,7 +63,7 @@ def build(http_id, http_name, rm_id, rm_name, table_id, linear_id, admin_id, equ
         "options": {"waitForSubWorkflow": True}}, 1980, y, ver=1.2, onError="continueRegularOutput")
 
     node("Sticky Note", "n8n-nodes-base.stickyNote", {"content": (
-        "## Support Agent: Offboarding Now\n"
+        "## Автоматизатор: Offboarding Now\n"
         "Кожні 5 хв: заявки на звільнення, змінені за останні 15 хв. Коментар «Обробити зараз» від учасника «IT Адміни»\n"
         "-> спершу перевірка техніки в GLPI, потім флоу оффбордингу (трекер 41 лінійний, 25 адмін) лише для цієї заявки.\n"
         "Оффбординг сам перевіряє дату, AD, Google і пише звіт. Команда пишеться в аудит і виконується один раз."), "height": 190, "width": 620}, -200, -300)
@@ -123,7 +123,7 @@ def build(http_id, http_name, rm_id, rm_name, table_id, linear_id, admin_id, equ
     link("Code: Find Commands", "Route by Flow")
     link("Route by Flow", "Run: Linear Offboarding", 0)
     link("Route by Flow", "Run: Admin Offboarding", 1)
-    return {"name": "Support Agent: Offboarding Now", "nodes": nodes, "connections": conn, "settings": {"executionOrder": "v1"}}
+    return {"name": "Автоматизатор: Offboarding Now", "nodes": nodes, "connections": conn, "settings": {"executionOrder": "v1"}}
 
 
 if __name__ == "__main__":

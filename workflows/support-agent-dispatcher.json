@@ -1,9 +1,9 @@
 {
- "name": "Support Agent: Dispatcher",
+ "name": "Автоматизатор: Dispatcher",
  "nodes": [
   {
    "parameters": {
-    "content": "## Support Agent: Dispatcher\nКожні 5 хв: нові нерозподілені заявки HelpDesk без запису в аудиті.\n1. Правила визначають тип. 2. Де правила мовчать, Gemini (лише класифікація, строгий JSON).\n3. Передає заявки інструментам (під-воркфлоу) з підказкою ai; кожен інструмент сам перевіряє AD/Redmine/Google і веде аудит.\n«other» пишеться в аудит, щоб ІІ не класифікував її вдруге; таку заявку беруть люди.\nФлоу «Apply Approved Changes» працює окремо за розкладом.",
+    "content": "## Автоматизатор: Dispatcher\nКожні 2 хв: нові нерозподілені заявки HelpDesk без запису в аудиті.\n1. Правила визначають тип. 2. Де правила мовчать, Gemini (лише класифікація, строгий JSON).\n3. Передає заявки інструментам (під-воркфлоу) з підказкою ai; кожен інструмент сам перевіряє AD/Redmine/Google і веде аудит.\n«other» пишеться в аудит, щоб ІІ не класифікував її вдруге; таку заявку беруть люди.\nФлоу «Apply Approved Changes» працює окремо за розкладом.",
     "height": 230,
     "width": 640
    },
@@ -13,7 +13,7 @@
     -200,
     -320
    ],
-   "id": "10974f8d-624f-443d-98f5-9cfbbdd367e4",
+   "id": "94c06f53-dd25-49ef-ae7d-c46ee26fa4cd",
    "name": "Sticky Note"
   },
   {
@@ -22,7 +22,7 @@
      "interval": [
       {
        "field": "minutes",
-       "minutesInterval": 5
+       "minutesInterval": 2
       }
      ]
     }
@@ -33,8 +33,8 @@
     0,
     0
    ],
-   "id": "a04ec660-acea-481d-8b0e-8eb9e3833250",
-   "name": "Every 5 Min"
+   "id": "50f06e3e-d3b7-4933-a993-e174831d041e",
+   "name": "Every 2 Min"
   },
   {
    "parameters": {
@@ -75,6 +75,12 @@
        "name": "allowed_author_ids",
        "value": "<COORDINATOR_IDS>",
        "type": "string"
+      },
+      {
+       "id": "a7",
+       "name": "admins_group_id",
+       "value": "35",
+       "type": "string"
       }
      ]
     },
@@ -86,7 +92,7 @@
     220,
     0
    ],
-   "id": "a6649edd-633b-4cda-aebd-b3497f14ceea",
+   "id": "211a9871-7b4e-426a-a7a8-2cfa6156f6eb",
    "name": "Config"
   },
   {
@@ -108,7 +114,7 @@
     440,
     0
    ],
-   "id": "6fa0060b-d5be-4c79-9e12-17b0795d84f7",
+   "id": "a2528439-9792-439a-90ad-4f3174d46dd4",
    "name": "[Data Table] Get Processed",
    "alwaysOutputData": true
   },
@@ -119,7 +125,7 @@
     "filters": {
      "project_id": "={{ $('Config').first().json.project_id }}",
      "tracker_id": "={{ $('Config').first().json.tracker_id }}",
-     "status_id": "1"
+     "status_id": "open"
     },
     "options": {}
    },
@@ -129,18 +135,19 @@
     660,
     0
    ],
-   "id": "73521a44-e8eb-4816-82d5-071b9dd5665e",
+   "id": "2c91dc4f-41a6-414d-abfc-0fead9595918",
    "name": "[Redmine] Get New Tickets",
    "credentials": {
     "redmineApi": {
      "id": "<REDMINE_CRED>",
      "name": "Redmine <ENV> account"
     }
-   }
+   },
+   "executeOnce": true
   },
   {
    "parameters": {
-    "jsCode": "// Нові нерозподілені заявки без запису в аудиті; тип за правилами, решта -> ІІ\nconst seen = new Set($('[Data Table] Get Processed').all().map(i => String(i.json.ticket_id)).filter(Boolean));\n// заявки авторів поза списком координаторів не чіпаємо взагалі (їхній текст не йде ні в інструменти, ні в ІІ)\nconst allowed = String($('Config').first().json.allowed_author_ids).split(',').map(s => s.trim()).filter(Boolean);\nconst tickets = ($input.first().json.issues || []).filter(t => !t.assigned_to && !seen.has(String(t.id))\n  && allowed.includes(String(t.author && t.author.id)));\nconst known = [], unknown = [];\nfor (const t of tickets) {\n  const text = `${t.subject}\\n${t.description || ''}`.toLowerCase();\n  let type = 'other';\n  if (/(розблок|разблок|unlock)/.test(text) && /(redmine|редмайн)/.test(text)) type = 'redmine_unlock';\n  else if (/змін\\S*\\s+особист\\S*\\s+пошт/.test(text)) type = 'mail_change';\n  else if (/(гостьов|guest acc|guest\\.google|google|гугл|gmail)/.test(text)\n           && /(2fa|2-step|двоетап|двохетап|двофактор|двухфакт|подвійн|backup|резервн|код|sign-in settings|верифікац|не може увійти|втрат\\S* доступ|відновлен\\S* доступ)/.test(text)) type = 'guest_codes';\n  else if (/(змін\\S*\\s+парол|скин\\S*\\s+парол|парол\\S*\\s+vpn)/.test(text)\n           || (/(заблок|розблок|locked out|account locked)/.test(text) && !/(redmine|редмайн|google|гугл|gmail|rivneshare|1с|1c)/.test(text))) type = 'password_reset';\n  (type === 'other' ? unknown : known).push({ ...t, route: type, via: 'rules' });\n}\nreturn [{ json: { known, unknown,\n  prompt_batch: JSON.stringify(unknown.map(t => ({ id: t.id, subject: String(t.subject).slice(0, 200),\n    text: String(t.description || '').replace(/\\s+/g, ' ').slice(0, 700) }))) } }];"
+    "jsCode": "// Нові заявки без запису в аудиті: вільні -> тип за правилами (решта -> ІІ), вже взяті інженером -> лише аудит\nconst seen = new Set($('[Data Table] Get Processed').all().map(i => String(i.json.ticket_id)).filter(Boolean));\n// заявки авторів поза списком координаторів не чіпаємо взагалі (їхній текст не йде ні в інструменти, ні в ІІ)\nconst allowed = String($('Config').first().json.allowed_author_ids).split(',').map(s => s.trim()).filter(Boolean);\nconst everyone = allowed.includes('*');  // '*' у Config = заявки від усіх авторів (тест)\n// нова заявка в Redmine одразу призначена групі «IT Адміни» (admins_group_id): вважаємо її нерозподіленою, поки не взяв інженер\nconst adminsGroup = String($('Config').first().json.admins_group_id);\nconst tickets = ($input.first().json.issues || []).filter(t => !seen.has(String(t.id)) && (everyone || allowed.includes(String(t.author && t.author.id))));\n// заявку вже взяв інженер: інструментам не віддаємо, лише в аудит як «other» (via taken), щоб радник встиг дати підказку; беремо свіжі, за останні 24 год\nconst fresh = Date.now() - 24 * 3600000;\nconst isFree = t => (!t.assigned_to || String(t.assigned_to.id) === adminsGroup) && t.status && t.status.id === 1;\nconst known = [], unknown = [];\nfor (const t of tickets) {\n  if (!isFree(t)) { if (Date.parse(t.created_on) >= fresh) known.push({ ...t, route: 'other', via: 'taken' }); continue; }\n  const text = `${t.subject}\\n${t.description || ''}`.toLowerCase();\n  let type = 'other';\n  if (/(розблок|разблок|unlock)/.test(text) && /(redmine|редмайн)/.test(text)) type = 'redmine_unlock';\n  else if (/змін\\S*\\s+особист\\S*\\s+пошт/.test(text)) type = 'mail_change';\n  else if ((/(гостьов|guest acc|guest\\.google)/.test(text)\n            && /(2fa|2-step|двоетап|двохетап|двофактор|двухфакт|подвійн|backup|резервн|код|sign-in settings|верифікац|не може увійти|втрат\\S* доступ|відновлен\\S* доступ)/.test(text))\n           || (/(google|гугл|gmail)/.test(text) && /(2fa|2-step|двоетап|двохетап|двофактор|двухфакт|sign-in settings|backup code|резервн\\S* код)/.test(text))) type = 'guest_codes';  // «google» + загальні слова («код», «резервні копії») помилково ловили заявки про розгортання\n  else if (/(змін\\S*\\s+парол|скин\\S*\\s+парол|парол\\S*\\s+vpn)/.test(text)\n           || (/(заблок|розблок|locked out|account locked)/.test(text) && !/(redmine|редмайн|google|гугл|gmail|rivneshare|1с|1c)/.test(text))) type = 'password_reset';\n  (type === 'other' ? unknown : known).push({ ...t, route: type, via: 'rules' });\n}\nreturn [{ json: { known, unknown,\n  prompt_batch: JSON.stringify(unknown.map(t => ({ id: t.id, subject: String(t.subject).slice(0, 200),\n    text: String(t.description || '').replace(/\\s+/g, ' ').slice(0, 700) }))) } }];"
    },
    "type": "n8n-nodes-base.code",
    "typeVersion": 2,
@@ -148,7 +155,7 @@
     880,
     0
    ],
-   "id": "e855101b-b55d-447b-a5bf-3e8001c172bd",
+   "id": "75bf8c04-d8fa-4a67-9ef8-ed97122331eb",
    "name": "Code: Rules Classify"
   },
   {
@@ -182,7 +189,7 @@
     1100,
     0
    ],
-   "id": "c6d64206-db2f-4c0c-92ad-f3b39c46b80a",
+   "id": "bdcf37a0-7516-4c28-ae6d-7344feda2f32",
    "name": "Need AI?"
   },
   {
@@ -197,7 +204,7 @@
     1320,
     -120
    ],
-   "id": "f1041f60-46bf-4e3c-be9d-e8a0fa917905",
+   "id": "2c064d90-c44c-4f0d-bc70-ef71da0597a8",
    "name": "AI: Classify Tickets",
    "retryOnFail": true,
    "maxTries": 3,
@@ -217,7 +224,7 @@
     1320,
     120
    ],
-   "id": "772f1a71-8d50-491a-82a3-73935030775a",
+   "id": "86c6d891-bb91-4a92-af6c-7309a727bc81",
    "name": "Gemini",
    "credentials": {
     "googlePalmApi": {
@@ -236,7 +243,7 @@
     1540,
     -120
    ],
-   "id": "cfd9a4b9-f46a-4e46-833e-26d9fb373fc6",
+   "id": "fd3fe6ae-0360-40ac-8091-7b4128e319f7",
    "name": "Code: Apply AI"
   },
   {
@@ -249,7 +256,7 @@
     1760,
     0
    ],
-   "id": "1eaea81c-1af3-4915-a396-16b71cbb9e03",
+   "id": "06dbde44-10c0-469c-b235-b4daec026f74",
    "name": "Code: Route Tickets"
   },
   {
@@ -362,7 +369,7 @@
     1980,
     0
    ],
-   "id": "a71b68f3-7894-4ea7-9818-b4a46cb08906",
+   "id": "7370fdc0-82f1-4fcf-8d4c-0e61b27499d6",
    "name": "Route by Tool"
   },
   {
@@ -384,7 +391,7 @@
     2200,
     -300
    ],
-   "id": "eb95ad02-c247-47af-b676-39c12dc68e9d",
+   "id": "15ba0b2e-a53e-4244-8292-c46f806e4005",
    "name": "Tool: Redmine Unlock",
    "onError": "continueRegularOutput"
   },
@@ -407,7 +414,7 @@
     2200,
     -100
    ],
-   "id": "5d31aac7-0e49-406f-9684-c4840a4acaa6",
+   "id": "df8e846a-4520-4645-aa3e-769cf71fa044",
    "name": "Tool: AD Account & Personal Mail",
    "onError": "continueRegularOutput"
   },
@@ -430,7 +437,7 @@
     2200,
     100
    ],
-   "id": "01ca3bbb-f952-4414-9a6b-4fad0947f9bd",
+   "id": "cb3fb6ec-6fa6-4c62-b6b4-d088ef5c3e24",
    "name": "Tool: Google Guest Access",
    "onError": "continueRegularOutput"
   },
@@ -519,12 +526,12 @@
     2200,
     300
    ],
-   "id": "d5d24016-a872-40a8-a467-d19ba74b06e7",
+   "id": "da891cba-3199-48c2-a5eb-c0f430bbd7f6",
    "name": "[Data Table] Log Other"
   }
  ],
  "connections": {
-  "Every 5 Min": {
+  "Every 2 Min": {
    "main": [
     [
      {

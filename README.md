@@ -1,10 +1,12 @@
 # Support Agent: перша лінія техпідтримки в Redmine на n8n
 
+> **Вперше тут?** Спочатку прочитайте [docs/how-it-works.md](docs/how-it-works.md): що це, як ролі «радник» і «автоматизатор» відрізняються, що відбувається із задачею. Нижче технічний опис.
+
 Агент сам закриває найпростіші й найчастіші заявки HelpDesk у Redmine: розблоковує облікові записи Redmine, вмикає вимкнені через неактивність облікові записи AD і (з підтвердженням адміністратора) змінює особисту пошту ГА для скидання пароля. Усе, у чому він не впевнений, передає групі «IT Адміни» з поясненням, що перевірив і чому не зробив сам.
 
 Паролів корпоративних облікових записів агент не бачить і не надсилає. Єдиний виняток: тимчасовий пароль гостьового акаунта Google, який після «Погоджую» генерується в момент дії, не зберігається ніде й іде окремим листом на робочу пошту. Діє лише в межах дозволеного OU, лише за заявками від затверджених координаторів і веде аудит кожної дії.
 
-Статус: пілот. Усі флоу (розблокування Redmine, AD, зміна пошти, гостьові акаунти Google, диспетчер з ІІ, запуск оффбордингу за командою) перевірено на тестовому Redmine, тестовому OU AD і тестових гостях Google. Тіньовий режим (DRY RUN на бойовому Redmine) погоджено, старт запланований на 2 листопада 2026. Бойовий режим вмикається по фазах після тіні.
+Статус: у роботі, усі активні флоу в бойовому режимі. Усі флоу (розблокування Redmine, AD, зміна пошти, гостьові акаунти Google, диспетчер з ІІ, запуск оффбордингу за командою) перевірено на тестовому Redmine, тестовому OU AD і тестових гостях Google. Тіньовий режим (DRY RUN на бойовому Redmine) погоджено, старт запланований на 2 листопада 2026. Бойовий режим вмикається по фазах після тіні.
 
 > **English summary.** An n8n first-line IT support agent for a Redmine HelpDesk. A dispatcher reads new tickets from approved coordinators, classifies them with rules plus Gemini (classification only, strict JSON), and hands them to single-purpose tool workflows: Redmine account unlock, AD account enable/unlock, personal-mail change and Google guest-account backup codes or temporary password. Anything that grants access to an account waits for an IT admin to comment "Approve" (the author cannot approve). Every decision goes to an audit table, passwords and codes are never stored, and a DRY RUN switch makes the whole thing run in shadow mode. Workflows are built from Python (`tools/`), JSON exports contain placeholders only. Tests and live fixtures are kept in a private repository.
 

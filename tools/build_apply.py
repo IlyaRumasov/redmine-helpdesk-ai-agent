@@ -1,4 +1,4 @@
-"""Збирає workflows/support-agent-apply-approved.json (флоу «Support Agent: Apply Approved Changes»).
+"""Збирає workflows/support-agent-apply-approved.json (флоу «Автоматизатор: Apply Approved Changes»).
 
 Виконує зміни, які агент підготував і поставив на «Needs approve» (зараз: зміна особистої пошти, postOfficeBox),
 лише після коментаря «Погоджую» від учасника групи «IT Адміни» (не автора заявки).
@@ -85,15 +85,48 @@ return out;
 """
 
 REPORT_JS = r"""
+const saluteOf = t => {  // як звертається автор заявки, якою мовою пише і як його звати
+  const desc = String(t.description || '');
+  const strip = x => String(x || '').replace(/https?:\/\/\S+|\S+@\S+|\b[\w-]+(?:[._][\w-]+)+\b/g, ' ');
+  const txt = strip(desc).length >= 15 ? strip(desc) : strip(String(t.subject || '') + ' ' + desc);
+  const cyr = (txt.match(/[\u0400-\u04FF]/g) || []).length, lat = (txt.match(/[A-Za-z]/g) || []).length;
+  const lang = lat >= 8 && cyr * 10 < lat ? 'en' : 'uk';  // англійська, якщо кирилиці майже немає
+  const s = (desc || String(t.subject || '')).toLowerCase().replace(/^[^\p{L}\p{N}]+/u, '').slice(0, 80);
+  let hi;
+  if (lang === 'en') hi = /^good\s+morning/.test(s) ? 'Good morning' : /^good\s+afternoon/.test(s) ? 'Good afternoon' : /^good\s+evening/.test(s) ? 'Good evening' : /^hi\b/.test(s) ? 'Hi' : 'Hello';
+  else if (/^(доброго\s+ранку|добрий\s+ранок|доброе\s+утро)/.test(s)) hi = 'Доброго ранку';
+  else if (/^(добрий\s+день|доброго\s+дня|добрый\s+день)/.test(s)) hi = 'Добрий день';
+  else if (/^(добрий\s+вечір|доброго\s+вечора|добрый\s+вечер)/.test(s)) hi = 'Добрий вечір';
+  else if (/^(вітаю|здрастуйте|здравствуйте)/.test(s)) hi = 'Вітаю';
+  else hi = 'Привіт';
+  const nm = String((t.author && t.author.name) || '').trim().split(/\s+/);
+  const name = nm.length === 2 && /^[\p{L}'’-]+$/u.test(nm[1]) ? nm[1] : '';  // у Redmine ім'я у форматі «Прізвище Ім'я»; інші формати без імені
+  return { lang, hi, name };
+};
+const _kh = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Kyiv', hour: 'numeric', hourCycle: 'h23' }).format(new Date()));
+// звертання, мова й ім'я автора: з Code: Parse Tickets (флоу-інструменти) або з тексту заявки (флоу Apply)
+const _salOf = id => {
+  try { const p = $('Code: Parse Tickets').all().find(x => String(x.json.ticket_id) === String(id)); if (p && p.json.salute) return p.json.salute; } catch (e) {}
+  try { for (const { json: h } of $('[Redmine] Get Ticket History').all()) { const i = h.issue || h; if (String(i.id) === String(id)) return saluteOf(i); } } catch (e) {}
+  return { lang: 'uk', hi: 'Привіт', name: '' };
+};
+// лише для публічних відповідей людям (укр. або англ. за мовою заявки); приватні нотатки для адміністраторів без привітань
+const polite = (uk, en, id) => {
+  const s = _salOf(id), nm = s.name ? ', ' + s.name : '';
+  return s.lang === 'en'
+    ? `${s.hi}${nm}! Thank you for your request.\n\n${en || uk}\n\n${_kh < 18 ? 'Have a nice day!' : 'Have a nice evening!'}`
+    : `${s.hi}${nm}! Дякуємо за звернення.\n\n${uk}\n\n${_kh < 18 ? 'Гарного дня!' : 'Гарного вечора!'}`;
+};
 const cfg = $('Config').first().json;
 return $input.all().map(({ json: j }) => {
   const p = j.plan || {};
   const failed = j.done === 'no';
-  let note, kind = 'set_mail', close = false, assign = false, details = j.reason || '';
+  let note, noteEn = '', kind = 'set_mail', close = false, assign = false, details = j.reason || '';
   if (j.action === 'set_mail' && !failed) {
     close = true;
     details = `${p.old || '(порожньо)'} -> ${p.new}, підтвердив ${j.approved_by}`;
-    note = `Доброго дня! Особиста пошта для ${p.login} змінена, для генерації нового паролю скористайтеся порталом ${cfg.portal_url}`;
+    note = `Особиста пошта для ${p.login} змінена, для генерації нового паролю скористайтеся порталом ${cfg.portal_url}`;
+    noteEn = `The personal email for ${p.login} has been changed. To generate a new password, use the portal ${cfg.portal_url}`;
   } else if (j.action === 'cancel') {
     kind = 'cancelled';
     note = `Агент: зміну особистої пошти скасовано (${details}). Якщо вона ще потрібна, створіть нову заявку.`;
@@ -106,7 +139,7 @@ return $input.all().map(({ json: j }) => {
     note = `DRY RUN (змін не внесено). Агент ${kind === 'set_mail' ? 'змінив би пошту ' + p.login + ' на ' + p.new + ' і закрив би задачу' : 'не виконав би зміну. Причина: ' + details}.`;
     close = false; assign = false;
   }
-  return { json: { ticket_id: j.ticket_id, kind, note, private: j.dry_run || kind !== 'set_mail', close, assign,
+  return { json: { ticket_id: j.ticket_id, kind, note: (j.dry_run || kind !== 'set_mail') ? note : polite(note, noteEn, j.ticket_id), private: j.dry_run || kind !== 'set_mail', close, assign,
                    logins: p.login || '', outcome: kind === 'set_mail' && !j.dry_run ? 'applied' : kind, details,
                    payload: JSON.stringify(p), dry_run: j.dry_run, at: new Date().toISOString() } };
 });
@@ -136,7 +169,7 @@ def build(rm_id, rm_name, ldap_id, ldap_name, table_id):
                          % (done, "String($json.error || 'невідома помилка')" if done == "no" else "''"), "options": {}}
 
     node("Sticky Note", "n8n-nodes-base.stickyNote", {"content": (
-        "## Support Agent: Apply Approved Changes\n"
+        "## Автоматизатор: Apply Approved Changes\n"
         "Кожні 5 хв перевіряє заявки, для яких агент підготував зміну (аудит: awaiting_approval).\n"
         "Виконує лише після коментаря «Погоджую» від учасника «IT Адміни» (не автора заявки) і якщо в AD нічого не змінилось.\n"
         "Закрита задача або 7 днів без підтвердження = зміну скасовано.\n"
@@ -200,7 +233,7 @@ def build(rm_id, rm_name, ldap_id, ldap_name, table_id):
     link("[AD] Update Personal Mail", "Mark Failed", 1)
     link("Mark Done", "Merge Results", 0, 0)
     link("Mark Failed", "Merge Results", 0, 1)
-    return {"name": "Support Agent: Apply Approved Changes", "nodes": nodes, "connections": conn, "settings": {"executionOrder": "v1"}}
+    return {"name": "Автоматизатор: Apply Approved Changes", "nodes": nodes, "connections": conn, "settings": {"executionOrder": "v1"}}
 
 
 if __name__ == "__main__":

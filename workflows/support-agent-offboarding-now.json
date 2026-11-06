@@ -1,9 +1,9 @@
 {
- "name": "Support Agent: Offboarding Now",
+ "name": "Автоматизатор: Offboarding Now",
  "nodes": [
   {
    "parameters": {
-    "content": "## Support Agent: Offboarding Now\nКожні 5 хв: заявки на звільнення, змінені за останні 15 хв. Коментар «Обробити зараз» від учасника «IT Адміни»\n-> одразу викликається флоу оффбордингу (трекер 41 лінійний, 25 адмін) лише для цієї заявки.\nОффбординг сам перевіряє дату, AD, Google і пише звіт. Команда пишеться в аудит і виконується один раз.",
+    "content": "## Автоматизатор: Offboarding Now\nКожні 5 хв: заявки на звільнення, змінені за останні 15 хв. Коментар «Обробити зараз» від учасника «IT Адміни»\n-> спершу перевірка техніки в GLPI, потім флоу оффбордингу (трекер 41 лінійний, 25 адмін) лише для цієї заявки.\nОффбординг сам перевіряє дату, AD, Google і пише звіт. Команда пишеться в аудит і виконується один раз.",
     "height": 190,
     "width": 620
    },
@@ -13,7 +13,7 @@
     -200,
     -300
    ],
-   "id": "297fd584-b712-49e2-ad95-9ae2772927d4",
+   "id": "0865786a-ebfa-4126-aa50-1cdf5c935305",
    "name": "Sticky Note"
   },
   {
@@ -33,7 +33,7 @@
     0,
     0
    ],
-   "id": "39241ce8-ef84-4ead-8654-3b1e08bd1032",
+   "id": "937905c8-5ef4-4615-808e-93b6d1d6d44a",
    "name": "Every 5 Min"
   },
   {
@@ -110,7 +110,7 @@
     220,
     0
    ],
-   "id": "20d4efd6-f302-4881-b55f-911c748150cf",
+   "id": "124555b9-d9cf-4735-b7f0-ad2a572b6e3d",
    "name": "Config"
   },
   {
@@ -132,7 +132,7 @@
     440,
     0
    ],
-   "id": "dd653102-4209-4c30-bd4f-98ab77b57b69",
+   "id": "aa73f675-ee71-43ca-9abb-f46adab83235",
    "name": "[Data Table] Get Log",
    "alwaysOutputData": true
   },
@@ -149,7 +149,7 @@
     660,
     0
    ],
-   "id": "5a6b5756-528b-440f-8216-503a234d0ece",
+   "id": "984a1ed3-9b87-4c6b-a2a9-f5cfbe5abc8b",
    "name": "[Redmine] Get Recently Updated",
    "credentials": {
     "httpHeaderAuth": {
@@ -169,7 +169,7 @@
     880,
     0
    ],
-   "id": "67840f68-70e7-4b02-baac-f79005239ad9",
+   "id": "c335647a-a927-4c0f-b735-cfa7901952bc",
    "name": "Code: Split Issues"
   },
   {
@@ -187,7 +187,7 @@
     1100,
     0
    ],
-   "id": "14e9770b-01bf-43e4-b68a-f052e40d6a18",
+   "id": "9a23ba38-153f-4ff7-8745-b45af2ab8ecf",
    "name": "[Redmine] Get Ticket History",
    "credentials": {
     "redmineApi": {
@@ -213,7 +213,7 @@
     1320,
     0
    ],
-   "id": "35f420c4-b564-4cc1-9fba-10b0af7f71d9",
+   "id": "bee4b87a-0d4c-43d3-bf1e-52ba130a5d11",
    "name": "[Redmine] Get IT Admins",
    "credentials": {
     "redmineApi": {
@@ -234,7 +234,7 @@
     1540,
     0
    ],
-   "id": "60d8d003-34c5-4a8d-ac5b-842ff9ad2939",
+   "id": "fc9df66d-76db-410e-ae1d-82cdc53707e3",
    "name": "Code: Find Commands"
   },
   {
@@ -299,7 +299,7 @@
     1760,
     0
    ],
-   "id": "484d1b6d-813f-406e-9d06-2c402ea3b6ec",
+   "id": "8002444b-08f3-45e2-a02a-8cf3c68612d5",
    "name": "Route by Flow"
   },
   {
@@ -321,7 +321,7 @@
     1980,
     -360
    ],
-   "id": "f6da2481-cc9a-4357-830c-1b84450d89b0",
+   "id": "5742a3a9-03ba-4dca-908d-dff137172dc7",
    "name": "Run: Equipment Check",
    "onError": "continueRegularOutput"
   },
@@ -344,7 +344,7 @@
     1980,
     -120
    ],
-   "id": "5a17c85e-d74b-4a86-9e86-a767cea4b647",
+   "id": "0d9dc3e5-9698-4cd8-8180-87819b52e07c",
    "name": "Run: Linear Offboarding",
    "onError": "continueRegularOutput"
   },
@@ -367,7 +367,7 @@
     1980,
     120
    ],
-   "id": "7ba848a4-6104-4309-be7c-15575f7f5b79",
+   "id": "9e81b62e-5b4b-4e2f-8939-17b6f8448253",
    "name": "Run: Admin Offboarding",
    "onError": "continueRegularOutput"
   },
@@ -466,7 +466,7 @@
     2200,
     0
    ],
-   "id": "08e60892-3823-41cd-acf2-bef2ccbc1b36",
+   "id": "b5aac5d8-cdaa-4ee5-8a89-7538b1ed2669",
    "name": "[Data Table] Log Command"
   }
  ],
