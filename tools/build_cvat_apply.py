@@ -163,7 +163,8 @@ def build(rm_id, rm_name, http_id, http_name, table_id, hz_id="<HETZNER_CRED>", 
     node("Code: Build Report", "n8n-nodes-base.code", {"jsCode": REPORT_JS.strip()}, 3300, 0, ver=2)
     node("[Redmine] Update Ticket", RM, {"operation": "update", "issueId": "={{ $json.ticket_id }}", "notes": "={{ $json.note }}",
          "private_notes": "={{ $json.private }}",
-         "additionalFields": {"status_id": "={{ $json.close ? $('Config').first().json.resolved_status_id : undefined }}",
+         "additionalFields": {"customFields": {"field": [{"id": "92", "value": "={{ $json.close ? 'Создание нового сервера/сервиса/ресурса' : '' }}"}]},
+                              "status_id": "={{ $json.close ? $('Config').first().json.resolved_status_id : undefined }}",
                               "assigned_to_id": "={{ $json.assign ? $('Config').first().json.admins_group_id : undefined }}"},
          "options": {}}, 3520, 0, credentials=rmc, onError="continueRegularOutput")
     node("[Data Table] Log Result", "n8n-nodes-base.dataTable", {"resource": "row", "operation": "insert", "dataTableId": table, "columns": {

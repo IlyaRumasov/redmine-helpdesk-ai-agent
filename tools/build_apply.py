@@ -210,7 +210,8 @@ def build(rm_id, rm_name, ldap_id, ldap_name, table_id):
     node("Code: Build Report", "n8n-nodes-base.code", {"jsCode": REPORT_JS.strip()}, 2860, 0, ver=2)
     node("[Redmine] Update Ticket", RM, {"operation": "update", "issueId": "={{ $json.ticket_id }}", "notes": "={{ $json.note }}",
          "private_notes": "={{ $json.private }}",
-         "additionalFields": {"status_id": "={{ $json.close ? $('Config').first().json.resolved_status_id : undefined }}",
+         "additionalFields": {"customFields": {"field": [{"id": "92", "value": "={{ $json.close ? 'Восстановление доступа' : '' }}"}]},
+                              "status_id": "={{ $json.close ? $('Config').first().json.resolved_status_id : undefined }}",
                               "assigned_to_id": "={{ $json.assign ? $('Config').first().json.admins_group_id : undefined }}"},
          "options": {}}, 3080, 0, credentials=rmc, onError="continueRegularOutput")
     cols = [("ticket_id", "number"), ("kind", "string"), ("logins", "string"), ("outcome", "string"), ("dry_run", "boolean"),

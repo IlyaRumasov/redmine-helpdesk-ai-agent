@@ -236,7 +236,8 @@ def build(cred_id, cred_name, table_id):
     node("Code: Build Report", "n8n-nodes-base.code", {"jsCode": REPORT_JS.strip()}, 3080, 0, ver=2)
     node("[Redmine] Update Ticket", RM, {"operation": "update", "issueId": "={{ $json.ticket_id }}", "notes": "={{ $json.note }}",
          "private_notes": "={{ $json.private }}",
-         "additionalFields": {"status_id": "={{ $json.close ? $('Config').first().json.resolved_status_id : undefined }}",
+         "additionalFields": {"customFields": {"field": [{"id": "92", "value": "={{ $json.close ? 'Восстановление доступа' : '' }}"}]},
+                              "status_id": "={{ $json.close ? $('Config').first().json.resolved_status_id : undefined }}",
                               "assigned_to_id": "={{ $json.assign ? $('Config').first().json.admins_group_id : undefined }}"},
          "options": {}}, 3300, 0, credentials=cred, onError="continueRegularOutput")
     node("[Data Table] Log Result", "n8n-nodes-base.dataTable", {"resource": "row", "operation": "insert", "dataTableId": table, "columns": {
