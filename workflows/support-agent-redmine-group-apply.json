@@ -13,7 +13,7 @@
     -200,
     -300
    ],
-   "id": "31e62179-851e-4672-be79-30a241d422b8",
+   "id": "732f5dd7-393a-451d-8610-f405d9ae7b66",
    "name": "Sticky Note"
   },
   {
@@ -33,7 +33,7 @@
     0,
     0
    ],
-   "id": "606a94d4-659c-4bed-9f1f-01a53038d10e",
+   "id": "c29d63ab-5b83-405c-8485-d7064d148a1d",
    "name": "Every 5 Min"
   },
   {
@@ -92,7 +92,7 @@
     220,
     0
    ],
-   "id": "68a01583-8012-446d-b56e-82a457ca2ac8",
+   "id": "fb01c366-ec28-418d-b39b-8f2f577eac03",
    "name": "Config"
   },
   {
@@ -114,7 +114,7 @@
     440,
     0
    ],
-   "id": "46b1f57c-efdf-4965-a53f-f44f52332cc9",
+   "id": "8b31b099-9977-4683-9ac5-d2abad65ad60",
    "name": "[Data Table] Get Log",
    "alwaysOutputData": true
   },
@@ -128,7 +128,7 @@
     660,
     0
    ],
-   "id": "bd7367a4-ca15-4322-acbf-8e3c538f233a",
+   "id": "37901415-cbde-49d9-afa1-31bb7862753d",
    "name": "Code: Match Pending"
   },
   {
@@ -146,14 +146,17 @@
     880,
     0
    ],
-   "id": "d60864c9-5c1e-4553-b567-51b99c3d4e6b",
+   "id": "220ea94d-55a6-4b28-93c2-a24cfa22da38",
    "name": "[Redmine] Get Ticket History",
    "credentials": {
     "redmineApi": {
      "id": "<REDMINE_CRED>",
      "name": "Redmine <ENV> account"
     }
-   }
+   },
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 5000
   },
   {
    "parameters": {
@@ -172,7 +175,7 @@
     1100,
     0
    ],
-   "id": "f9f66607-63bb-4aaa-a3bf-929003b61395",
+   "id": "2571371e-5e00-4344-a845-3fe3431e9e79",
    "name": "[Redmine] Get IT Admins",
    "credentials": {
     "redmineApi": {
@@ -181,7 +184,10 @@
     }
    },
    "executeOnce": true,
-   "alwaysOutputData": true
+   "alwaysOutputData": true,
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 5000
   },
   {
    "parameters": {
@@ -193,7 +199,7 @@
     1320,
     0
    ],
-   "id": "816c42ca-ab81-4e52-a4bd-34b4403dc10c",
+   "id": "f76f1bd0-7417-4e7f-808c-593bf538389a",
    "name": "Code: Decide Apply"
   },
   {
@@ -227,7 +233,7 @@
     1540,
     0
    ],
-   "id": "43bd35f9-29e2-4710-859c-befac747d567",
+   "id": "55513261-95b9-491f-a1cc-1f102120a42a",
    "name": "Apply Now?"
   },
   {
@@ -242,7 +248,7 @@
     1760,
     -120
    ],
-   "id": "d6494c03-f0b2-42b1-a8a0-e3e508292748",
+   "id": "2187201c-3b04-462e-8792-363462996ec6",
    "name": "Split Out Users"
   },
   {
@@ -269,7 +275,7 @@
     1980,
     -120
    ],
-   "id": "f3e00680-5412-470c-af83-c4daea3284ed",
+   "id": "b817b377-1d6c-4c2f-89ba-a473c2c1afea",
    "name": "[Redmine] Add To Group",
    "credentials": {
     "httpHeaderAuth": {
@@ -300,7 +306,7 @@
     2200,
     -120
    ],
-   "id": "8925159f-7db2-4dff-a415-d06a8ae21623",
+   "id": "c616791e-3025-447e-bb1b-dc6e536d8cb8",
    "name": "[Redmine] Verify Membership",
    "credentials": {
     "httpHeaderAuth": {
@@ -308,7 +314,10 @@
      "name": "Redmine HTTP header auth"
     }
    },
-   "onError": "continueRegularOutput"
+   "onError": "continueRegularOutput",
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 5000
   },
   {
    "parameters": {
@@ -320,7 +329,7 @@
     2420,
     0
    ],
-   "id": "c4400324-3f69-4cf0-a642-32f7ac302231",
+   "id": "e8ec7925-21d9-4f47-aba9-3a6d679e8a0e",
    "name": "Merge Results"
   },
   {
@@ -333,7 +342,7 @@
     2640,
     0
    ],
-   "id": "47d56c2a-9d38-4244-af0c-799245cb8f62",
+   "id": "fce65f6c-1fe7-4eff-90af-f7f8073ecc50",
    "name": "Code: Build Report"
   },
   {
@@ -354,7 +363,7 @@
     2860,
     0
    ],
-   "id": "7d18469c-a8d5-4b34-89e4-cf8177720004",
+   "id": "f9ada40e-1c64-4d34-b5f3-0e1be3117301",
    "name": "[Redmine] Update Ticket",
    "credentials": {
     "redmineApi": {
@@ -469,7 +478,7 @@
     3080,
     0
    ],
-   "id": "8dc395f8-9b3f-4678-ab37-75eb43efe84c",
+   "id": "91eef2ef-c724-466a-84b7-b5c6e09f1b1e",
    "name": "[Data Table] Log Result"
   }
  ],

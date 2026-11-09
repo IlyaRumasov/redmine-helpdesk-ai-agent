@@ -13,7 +13,7 @@
     -200,
     -300
    ],
-   "id": "ee8cf9c7-a30d-4739-ba5c-a4050b6b23d3",
+   "id": "9c5cb074-0ff3-4c99-a42b-6d6d2bb56c5c",
    "name": "Sticky Note"
   },
   {
@@ -33,7 +33,7 @@
     0,
     0
    ],
-   "id": "8edb6f88-0f78-4065-a6ba-fbee3e39906d",
+   "id": "941874a0-d2b7-4b07-a638-24cd5362d510",
    "name": "Every 5 Min"
   },
   {
@@ -98,7 +98,7 @@
     220,
     0
    ],
-   "id": "c85d5d18-2d9e-4db5-9137-c211de08495e",
+   "id": "0df0d86e-a968-4388-9451-34f40722c7ee",
    "name": "Config"
   },
   {
@@ -120,7 +120,7 @@
     440,
     0
    ],
-   "id": "e7fe42fe-7000-4cb3-8009-4d1b76abfe2f",
+   "id": "29cfe218-938f-482d-b763-6a87d3dd3f9f",
    "name": "[Data Table] Get Processed",
    "alwaysOutputData": true
   },
@@ -141,14 +141,17 @@
     660,
     0
    ],
-   "id": "bd542f27-1602-4139-8247-e3a683f47b56",
+   "id": "ccaaa7f1-66b9-4b84-89f9-9b1832e76e75",
    "name": "[Redmine] Get New Tickets",
    "credentials": {
     "redmineApi": {
      "id": "<REDMINE_CRED>",
      "name": "Redmine <ENV> account"
     }
-   }
+   },
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 5000
   },
   {
    "parameters": {
@@ -160,7 +163,7 @@
     880,
     0
    ],
-   "id": "7fd91b76-87c9-4a5d-8ae0-a3b2f0d668f0",
+   "id": "a160dc4c-468b-47f5-8b13-ba080c78f37b",
    "name": "Code: Parse Tickets"
   },
   {
@@ -183,7 +186,7 @@
     1100,
     0
    ],
-   "id": "2d2e002a-933b-45d2-8219-df00274882af",
+   "id": "ce80f00e-9cd1-48a4-b1a1-eec07918b1ea",
    "name": "[Redmine] Find User",
    "credentials": {
     "httpHeaderAuth": {
@@ -191,7 +194,10 @@
      "name": "Redmine HTTP header auth"
     }
    },
-   "onError": "continueRegularOutput"
+   "onError": "continueRegularOutput",
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 5000
   },
   {
    "parameters": {
@@ -213,7 +219,7 @@
     1320,
     0
    ],
-   "id": "c9fc46e7-e81b-4c4e-a886-9ad845944fde",
+   "id": "ba6479a7-d677-41b2-81e5-5ca25fae6c00",
    "name": "[Redmine] Get User Groups",
    "credentials": {
     "httpHeaderAuth": {
@@ -221,7 +227,10 @@
      "name": "Redmine HTTP header auth"
     }
    },
-   "onError": "continueRegularOutput"
+   "onError": "continueRegularOutput",
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 5000
   },
   {
    "parameters": {
@@ -233,7 +242,7 @@
     1540,
     0
    ],
-   "id": "2839f54e-7f2f-4197-b80f-9eb80fe50c79",
+   "id": "b26cab24-5518-4f35-a7e7-6ea57a5d5ddc",
    "name": "Code: Decide Group Action"
   },
   {
@@ -246,7 +255,7 @@
     1760,
     0
    ],
-   "id": "e2067a47-338f-4cfb-a1d0-a8c5b9755a84",
+   "id": "c060c17a-42d1-4f17-a55a-222e342fb85f",
    "name": "Code: Build Report"
   },
   {
@@ -266,7 +275,7 @@
     1980,
     0
    ],
-   "id": "b09a1e56-32dd-4992-af9d-e77a4c11990e",
+   "id": "ea02fbe4-837d-4d3f-9bed-0b1f95fb2eaf",
    "name": "[Redmine] Update Ticket",
    "credentials": {
     "redmineApi": {
@@ -381,7 +390,7 @@
     2200,
     0
    ],
-   "id": "01973054-4f82-47a6-b3cc-88f49b059084",
+   "id": "7b6d84b8-e085-476e-a516-e0695867e2a4",
    "name": "[Data Table] Log Result"
   }
  ],

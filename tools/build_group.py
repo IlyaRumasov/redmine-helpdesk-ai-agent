@@ -153,6 +153,9 @@ def build(rm_id, rm_name, http_id, http_name, table_id):
                  ("Code: Decide Group Action", "Code: Build Report"), ("Code: Build Report", "[Redmine] Update Ticket"),
                  ("[Redmine] Update Ticket", "[Data Table] Log Result")]:
         link(a, b)
+    for n in nodes:  # разовий збій мережі/DNS не має ставати помилкою: повторюємо лише читання (запис не повторюємо, щоб не дублювати коментар)
+        if n["name"] in ("[Redmine] Get New Tickets", "[Redmine] Find User", "[Redmine] Get User Groups"):
+            n.update({"retryOnFail": True, "maxTries": 3, "waitBetweenTries": 5000})
     return {"name": "Автоматизатор: Redmine Group", "nodes": nodes, "connections": conn, "settings": {"executionOrder": "v1"}}
 
 

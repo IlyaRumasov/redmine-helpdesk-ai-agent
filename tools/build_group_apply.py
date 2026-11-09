@@ -191,6 +191,9 @@ def build(rm_id, rm_name, http_id, http_name, table_id):
     link("Apply Now?", "Split Out Users", 0)
     link("Apply Now?", "Merge Results", 1, 1)
     link("[Redmine] Verify Membership", "Merge Results", 0, 0)
+    for n in nodes:  # повторюємо лише читання; запис (додавання до групи, коментар) не повторюємо
+        if n["name"] in ("[Redmine] Get Ticket History", "[Redmine] Get IT Admins", "[Redmine] Verify Membership"):
+            n.update({"retryOnFail": True, "maxTries": 3, "waitBetweenTries": 5000})
     return {"name": "Автоматизатор: Redmine Group Apply", "nodes": nodes, "connections": conn, "settings": {"executionOrder": "v1"}}
 
 
