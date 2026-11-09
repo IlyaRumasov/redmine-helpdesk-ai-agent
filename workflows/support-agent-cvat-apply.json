@@ -1,0 +1,946 @@
+{
+ "name": "Автоматизатор: CVAT Apply",
+ "nodes": [
+  {
+   "parameters": {
+    "content": "## Автоматизатор: CVAT Apply\nКожні 5 хв перевіряє заявки, для яких флоу CVAT підготував дію (аудит: cvat_* / awaiting_approval).\nПісля коментаря «Погоджую» від учасника «IT Адміни» (не автора) виконує: розгортання (флоу 2 CVAT ChatOps, доступи потім листами\nнадсилає флоу 3), вимкнення, увімкнення або видалення зі снепшотом (інструмент Hetzner), відповідає авторові й закриває задачу.\nПеред виконанням пише в аудит рядок applying: повторно дія не запуститься. Закрита задача або 7 днів без підтвердження = скасовано.\n\n**DRY_RUN** (Config): true = нічого не змінює.",
+    "height": 240,
+    "width": 700
+   },
+   "type": "n8n-nodes-base.stickyNote",
+   "typeVersion": 1,
+   "position": [
+    -200,
+    -340
+   ],
+   "id": "710d8aa1-2c29-4a6a-9125-bd9d19035b24",
+   "name": "Sticky Note"
+  },
+  {
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "field": "minutes",
+       "minutesInterval": 5
+      }
+     ]
+    }
+   },
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.2,
+   "position": [
+    0,
+    0
+   ],
+   "id": "07139f8e-1bf1-48f7-aa6c-954847b78b80",
+   "name": "Every 5 Min"
+  },
+  {
+   "parameters": {
+    "assignments": {
+     "assignments": [
+      {
+       "id": "a1",
+       "name": "dry_run",
+       "value": true,
+       "type": "boolean"
+      },
+      {
+       "id": "a2",
+       "name": "approve_words",
+       "value": "погоджую,підтверджую",
+       "type": "string"
+      },
+      {
+       "id": "a3",
+       "name": "pending_days",
+       "value": 7,
+       "type": "number"
+      },
+      {
+       "id": "a4",
+       "name": "resolved_status_id",
+       "value": "17",
+       "type": "string"
+      },
+      {
+       "id": "a5",
+       "name": "admins_group_id",
+       "value": "35",
+       "type": "string"
+      },
+      {
+       "id": "a6",
+       "name": "redmine_url",
+       "value": "<REDMINE_URL>",
+       "type": "string"
+      }
+     ]
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-base.set",
+   "typeVersion": 3.4,
+   "position": [
+    220,
+    0
+   ],
+   "id": "8c4b8535-2ee5-46e3-b9ac-16f384e11bae",
+   "name": "Config"
+  },
+  {
+   "parameters": {
+    "resource": "row",
+    "operation": "get",
+    "dataTableId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "<AUDIT_TABLE>"
+    },
+    "returnAll": true,
+    "matchType": "anyCondition",
+    "filters": {}
+   },
+   "type": "n8n-nodes-base.dataTable",
+   "typeVersion": 1.1,
+   "position": [
+    440,
+    0
+   ],
+   "id": "2c40b349-7f6b-4d7b-9b73-8c0532c67a59",
+   "name": "[Data Table] Get Log",
+   "alwaysOutputData": true
+  },
+  {
+   "parameters": {
+    "jsCode": "const cfg = $('Config').first().json;\nconst dry = cfg.dry_run === true || cfg.dry_run === 'true';\n// у DRY RUN дивимось на найновіший запис (і сухий, і бойовий), у бойовому режимі лише бойові\nconst last = {}, newest = {};\nfor (const { json: r } of $input.all()) {\n  if (!r.ticket_id) continue;\n  if (!newest[r.ticket_id] || String(r.at) > String(newest[r.ticket_id].at)) newest[r.ticket_id] = r;\n  if (r.dry_run === true) continue;\n  if (!last[r.ticket_id] || String(r.at) > String(last[r.ticket_id].at)) last[r.ticket_id] = r;\n}\nconst out = [];\nfor (const r of Object.values(dry ? newest : last)) {\n  if (!String(r.kind).startsWith('cvat_') || r.kind === 'cvat_escalate' || r.outcome !== 'awaiting_approval') continue;\n  let p;\n  try { p = JSON.parse(r.payload); } catch (e) { continue; }\n  out.push({ json: { ticket_id: r.ticket_id, plan: p, kind: r.kind, prepared_at: r.at, dry_run: dry } });\n}\nreturn out;"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    660,
+    0
+   ],
+   "id": "a6020459-1a7e-4c4a-968b-685ebe964cdb",
+   "name": "Code: Match Pending"
+  },
+  {
+   "parameters": {
+    "operation": "get",
+    "issueId": "={{ $json.ticket_id }}",
+    "include": [
+     "journals"
+    ],
+    "options": {}
+   },
+   "type": "n8n-nodes-redmine.redmine",
+   "typeVersion": 1,
+   "position": [
+    880,
+    0
+   ],
+   "id": "1c6ff8bd-fb34-495a-8d37-87538f28afd6",
+   "name": "[Redmine] Get Ticket History",
+   "credentials": {
+    "redmineApi": {
+     "id": "<REDMINE_CRED>",
+     "name": "Redmine <ENV> account"
+    }
+   },
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 5000
+  },
+  {
+   "parameters": {
+    "resource": "user",
+    "operation": "getAll",
+    "returnAll": true,
+    "filters": {
+     "group_id": "={{ $('Config').first().json.admins_group_id }}",
+     "status": "1"
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-redmine.redmine",
+   "typeVersion": 1,
+   "position": [
+    1100,
+    0
+   ],
+   "id": "791c2754-3b49-4166-a516-c166722473c9",
+   "name": "[Redmine] Get IT Admins",
+   "credentials": {
+    "redmineApi": {
+     "id": "<REDMINE_CRED>",
+     "name": "Redmine <ENV> account"
+    }
+   },
+   "executeOnce": true,
+   "alwaysOutputData": true,
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 5000
+  },
+  {
+   "parameters": {
+    "jsCode": "const cfg = $('Config').first().json;\nconst words = String(cfg.approve_words).toLowerCase().split(',').map(s => s.trim()).filter(Boolean);\nconst maxAge = Number(cfg.pending_days) * 86400000;\nconst admins = new Set((($('[Redmine] Get IT Admins').first().json.users) || []).map(u => String(u.id)));\nconst pend = $('Code: Match Pending').all();\nconst hist = $('[Redmine] Get Ticket History').all();\nconst out = [];\npend.forEach(({ json: t }, i) => {\n  const r = { ...t, action: 'escalate', reason: '' };\n  const h = hist[i] && hist[i].json || {};\n  const issue = h.issue || h;\n  if (!issue.id) { out.push({ json: { ...r, reason: 'не вдалося прочитати заявку' } }); return; }\n  const author = String(issue.author && issue.author.id);\n  if ((issue.status && issue.status.is_closed) || ['17', '21'].includes(String(issue.status && issue.status.id))) {\n    out.push({ json: { ...r, action: 'cancel', reason: 'задачу закрито без підтвердження' } }); return;\n  }\n  const isWord = n => words.includes(String(n || '').trim().toLowerCase().replace(/[.!\\s]+$/, ''));\n  const notes = (issue.journals || []).filter(x => String(x.created_on) > String(t.prepared_at) && isWord(x.notes));\n  const ok = notes.filter(x => admins.has(String(x.user && x.user.id)) && String(x.user.id) !== author);\n  if (!ok.length) {\n    if (notes.length) { out.push({ json: { ...r, reason: `підтвердження написав ${notes[0].user.name}, але він не з «IT Адміни» або є автором заявки` } }); return; }\n    if (Date.now() - Date.parse(t.prepared_at) > maxAge) { out.push({ json: { ...r, action: 'cancel', reason: `немає підтвердження понад ${cfg.pending_days} днів` } }); return; }\n    return;  // ще чекаємо\n  }\n  out.push({ json: { ...r, action: 'apply', approved_by: ok[0].user.name } });\n});\nreturn out;"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1320,
+    0
+   ],
+   "id": "aa2eb9cd-f8fe-4fc0-bf2c-8af395595940",
+   "name": "Code: Decide Apply"
+  },
+  {
+   "parameters": {
+    "conditions": {
+     "options": {
+      "caseSensitive": true,
+      "leftValue": "",
+      "typeValidation": "strict",
+      "version": 2
+     },
+     "conditions": [
+      {
+       "id": "c",
+       "leftValue": "={{ $json.action === 'apply' && !$json.dry_run }}",
+       "rightValue": "",
+       "operator": {
+        "type": "boolean",
+        "operation": "true",
+        "singleValue": true
+       }
+      }
+     ],
+     "combinator": "and"
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.2,
+   "position": [
+    1540,
+    0
+   ],
+   "id": "ddbd9994-d590-42a6-80dc-df9c1d115944",
+   "name": "Apply Now?"
+  },
+  {
+   "parameters": {
+    "resource": "row",
+    "operation": "insert",
+    "dataTableId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "<AUDIT_TABLE>"
+    },
+    "columns": {
+     "mappingMode": "defineBelow",
+     "matchingColumns": [],
+     "value": {
+      "ticket_id": "={{ $json.ticket_id }}",
+      "kind": "={{ $json.plan.kind || 'cvat_' + $json.plan.action }}",
+      "logins": "={{ $json.plan.server }}",
+      "outcome": "applying",
+      "dry_run": false,
+      "details": "={{ 'погоджено: ' + $json.approved_by }}",
+      "at": "={{ new Date().toISOString() }}",
+      "payload": "={{ JSON.stringify($json.plan) }}"
+     },
+     "schema": [
+      {
+       "id": "ticket_id",
+       "displayName": "ticket_id",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "number",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "kind",
+       "displayName": "kind",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "logins",
+       "displayName": "logins",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "outcome",
+       "displayName": "outcome",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "dry_run",
+       "displayName": "dry_run",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "boolean",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "details",
+       "displayName": "details",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "at",
+       "displayName": "at",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "payload",
+       "displayName": "payload",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      }
+     ]
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-base.dataTable",
+   "typeVersion": 1.1,
+   "position": [
+    1760,
+    -120
+   ],
+   "id": "0ce26bc8-f9f8-4d28-8803-c3efc6ba9d34",
+   "name": "[Data Table] Log Applying"
+  },
+  {
+   "parameters": {
+    "jsCode": "const cfg = $('Config').first().json;\nconst out = [];\n// після запису applying на вході рядки аудиту, тому план беремо з рішення Decide Apply\nfor (const { json: t } of $('Code: Decide Apply').all().filter(i => i.json.action === 'apply' && !i.json.dry_run)) {\n  const p = t.plan, space = 'ticket-' + t.ticket_id;\n  if (p.action === 'deploy') {\n    out.push({ json: { ticket_id: t.ticket_id, plan: p, route: 'deploy', project_name: p.project, email: p.email, server_type: p.type, manager_username: p.login, chat_space: space } });\n  } else if (p.action === 'close') {   // інструмент Hetzner просить підтвердження видалення: перший виклик питає, другий відповідає «так» (зі снепшотом)\n    out.push({ json: { ticket_id: t.ticket_id, plan: p, route: 'tool', step: 'ask', query: 'delete_server ' + p.server, identifier: '', chat_space: space, chat_text: '' } });\n    out.push({ json: { ticket_id: t.ticket_id, plan: p, route: 'tool', step: 'confirm', query: 'delete_server ' + p.server, identifier: '', chat_space: space, chat_text: 'так' } });\n  } else {\n    out.push({ json: { ticket_id: t.ticket_id, plan: p, route: 'tool', step: 'do', query: (p.action === 'pause' ? 'poweroff ' : 'poweron ') + p.server, identifier: '', chat_space: space, chat_text: '' } });\n  }\n}\nreturn out;"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1980,
+    -120
+   ],
+   "id": "f0390bb5-0c89-4b2d-accc-989160ff668f",
+   "name": "Code: Build Calls"
+  },
+  {
+   "parameters": {
+    "rules": {
+     "values": [
+      {
+       "conditions": {
+        "options": {
+         "caseSensitive": true,
+         "leftValue": "",
+         "typeValidation": "strict",
+         "version": 2
+        },
+        "combinator": "and",
+        "conditions": [
+         {
+          "id": "r1",
+          "leftValue": "={{ $json.route }}",
+          "rightValue": "deploy",
+          "operator": {
+           "type": "string",
+           "operation": "equals"
+          }
+         }
+        ]
+       },
+       "renameOutput": true,
+       "outputKey": "deploy"
+      },
+      {
+       "conditions": {
+        "options": {
+         "caseSensitive": true,
+         "leftValue": "",
+         "typeValidation": "strict",
+         "version": 2
+        },
+        "combinator": "and",
+        "conditions": [
+         {
+          "id": "r2",
+          "leftValue": "={{ $json.route }}",
+          "rightValue": "tool",
+          "operator": {
+           "type": "string",
+           "operation": "equals"
+          }
+         }
+        ]
+       },
+       "renameOutput": true,
+       "outputKey": "tool"
+      }
+     ]
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-base.switch",
+   "typeVersion": 3.2,
+   "position": [
+    2200,
+    -120
+   ],
+   "id": "27b34ad4-aab2-451b-9292-e033c12f3890",
+   "name": "Route: Action"
+  },
+  {
+   "parameters": {
+    "workflowId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "<DEPLOY_FLOW_ID>"
+    },
+    "workflowInputs": {
+     "mappingMode": "defineBelow",
+     "value": {},
+     "matchingColumns": [],
+     "schema": [],
+     "attemptToConvertTypes": false,
+     "convertFieldsToString": true
+    },
+    "mode": "each",
+    "options": {}
+   },
+   "type": "n8n-nodes-base.executeWorkflow",
+   "typeVersion": 1.2,
+   "position": [
+    2420,
+    -220
+   ],
+   "id": "d352b455-36e6-435c-a234-514c02fd6f40",
+   "name": "Execute: Deploy Flow",
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "workflowId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "<HETZNER_TOOL_ID>"
+    },
+    "workflowInputs": {
+     "mappingMode": "defineBelow",
+     "value": {
+      "query": "={{ $json.query }}",
+      "identifier": "={{ $json.identifier }}",
+      "chat_space": "={{ $json.chat_space }}",
+      "chat_text": "={{ $json.chat_text }}"
+     },
+     "matchingColumns": [],
+     "schema": [
+      {
+       "id": "query",
+       "displayName": "query",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "identifier",
+       "displayName": "identifier",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "chat_space",
+       "displayName": "chat_space",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "chat_text",
+       "displayName": "chat_text",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      }
+     ],
+     "attemptToConvertTypes": false,
+     "convertFieldsToString": true
+    },
+    "mode": "each",
+    "options": {}
+   },
+   "type": "n8n-nodes-base.executeWorkflow",
+   "typeVersion": 1.2,
+   "position": [
+    2420,
+    0
+   ],
+   "id": "a56ecc8f-8a56-4590-ba07-2cb6d14a1a63",
+   "name": "Execute: Hetzner Tool",
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "numberInputs": 2
+   },
+   "type": "n8n-nodes-base.merge",
+   "typeVersion": 3.2,
+   "position": [
+    2640,
+    -120
+   ],
+   "id": "92cc9e33-4108-475b-9754-5e87c6821a10",
+   "name": "Merge Calls"
+  },
+  {
+   "parameters": {
+    "url": "https://api.hetzner.cloud/v1/servers",
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpBearerAuth",
+    "sendQuery": true,
+    "queryParameters": {
+     "parameters": [
+      {
+       "name": "per_page",
+       "value": "50"
+      }
+     ]
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    2860,
+    -120
+   ],
+   "id": "3590584b-8fce-4007-806d-a32dc3f3aa31",
+   "name": "[Hetzner] Get Servers",
+   "credentials": {
+    "httpBearerAuth": {
+     "id": "<HETZNER_CRED>",
+     "name": "Hetzner Cloud"
+    }
+   },
+   "executeOnce": true,
+   "onError": "continueRegularOutput",
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 5000
+  },
+  {
+   "parameters": {
+    "numberInputs": 2
+   },
+   "type": "n8n-nodes-base.merge",
+   "typeVersion": 3.2,
+   "position": [
+    3080,
+    0
+   ],
+   "id": "46a82712-796f-4391-b654-2e938abf47c4",
+   "name": "Merge Results"
+  },
+  {
+   "parameters": {
+    "jsCode": "const saluteOf = t => {  // як звертається автор заявки, якою мовою пише і як його звати\n  const desc = String(t.description || '');\n  const strip = x => String(x || '').replace(/https?:\\/\\/\\S+|\\S+@\\S+|\\b[\\w-]+(?:[._][\\w-]+)+\\b/g, ' ');\n  const txt = strip(desc).length >= 15 ? strip(desc) : strip(String(t.subject || '') + ' ' + desc);\n  const cyr = (txt.match(/[\\u0400-\\u04FF]/g) || []).length, lat = (txt.match(/[A-Za-z]/g) || []).length;\n  const lang = lat >= 8 && cyr * 10 < lat ? 'en' : 'uk';  // англійська, якщо кирилиці майже немає\n  const s = (desc || String(t.subject || '')).toLowerCase().replace(/^[^\\p{L}\\p{N}]+/u, '').slice(0, 80);\n  let hi;\n  if (lang === 'en') hi = /^good\\s+morning/.test(s) ? 'Good morning' : /^good\\s+afternoon/.test(s) ? 'Good afternoon' : /^good\\s+evening/.test(s) ? 'Good evening' : /^hi\\b/.test(s) ? 'Hi' : 'Hello';\n  else if (/^(доброго\\s+ранку|добрий\\s+ранок|доброе\\s+утро)/.test(s)) hi = 'Доброго ранку';\n  else if (/^(добрий\\s+день|доброго\\s+дня|добрый\\s+день)/.test(s)) hi = 'Добрий день';\n  else if (/^(добрий\\s+вечір|доброго\\s+вечора|добрый\\s+вечер)/.test(s)) hi = 'Добрий вечір';\n  else if (/^(вітаю|здрастуйте|здравствуйте)/.test(s)) hi = 'Вітаю';\n  else hi = 'Привіт';\n  const nm = String((t.author && t.author.name) || '').trim().split(/\\s+/);\n  const name = nm.length === 2 && /^[\\p{L}'’-]+$/u.test(nm[1]) ? nm[1] : '';  // у Redmine ім'я у форматі «Прізвище Ім'я»; інші формати без імені\n  return { lang, hi, name };\n};\nconst _kh = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Kyiv', hour: 'numeric', hourCycle: 'h23' }).format(new Date()));\n// звертання, мова й ім'я автора: з Code: Parse Tickets (флоу-інструменти) або з тексту заявки (флоу Apply)\nconst _salOf = id => {\n  try { const p = $('Code: Parse Tickets').all().find(x => String(x.json.ticket_id) === String(id)); if (p && p.json.salute) return p.json.salute; } catch (e) {}\n  try { for (const { json: h } of $('[Redmine] Get Ticket History').all()) { const i = h.issue || h; if (String(i.id) === String(id)) return saluteOf(i); } } catch (e) {}\n  return { lang: 'uk', hi: 'Привіт', name: '' };\n};\n// лише для публічних відповідей людям (укр. або англ. за мовою заявки); приватні нотатки для адміністраторів без привітань\nconst polite = (uk, en, id) => {\n  const s = _salOf(id), nm = s.name ? ', ' + s.name : '';\n  return s.lang === 'en'\n    ? `${s.hi}${nm}! Thank you for your request.\\n\\n${en || uk}\\n\\n${_kh < 18 ? 'Have a nice day!' : 'Have a nice evening!'}`\n    : `${s.hi}${nm}! Дякуємо за звернення.\\n\\n${uk}\\n\\n${_kh < 18 ? 'Гарного дня!' : 'Гарного вечора!'}`;\n};\n\nconst calls = (() => { try { return $('Code: Build Calls').all(); } catch (e) { return []; } })();\nconst resOf = (c, k) => { for (const n of ['Execute: Deploy Flow', 'Execute: Hetzner Tool']) { try { const all = $(n).all(); const mine = calls.filter(x => x.json.route === (n.includes('Deploy') ? 'deploy' : 'tool')); const idx = mine.indexOf(c); if (idx >= 0 && all[idx]) return all[idx].json; } catch (e) { } } return null; };\nlet servers = null;\ntry { servers = $('[Hetzner] Get Servers').first().json.servers; } catch (e) { }\nconst rows = [], live = {};\nfor (const { json: j } of $input.all()) {\n  if (!j.action) continue;                         // елементи після виконання не мають поля action: їх береться з calls\n  const p = j.plan || {};\n  let note, outcome, assign = false, details = j.reason || '';\n  if (j.action === 'apply') { outcome = 'dry_applied'; details = p.server; note = `DRY RUN (змін не внесено). Агент виконав би: ${p.action} ${p.server}.`; }\n  else if (j.action === 'cancel') { outcome = j.dry_run ? 'dry_cancelled' : 'cancelled'; note = `Агент: дію з CVAT скасовано (${details}). Якщо вона ще потрібна, створіть нову заявку.`; }\n  else { outcome = j.dry_run ? 'dry_escalate' : 'escalate'; assign = !j.dry_run; note = `Агент: дію з CVAT не виконано. Причина: ${details}. Потрібна перевірка людиною.`; }\n  rows.push({ ticket_id: j.ticket_id, kind: 'cvat_' + (p.action || 'escalate'), note, private: true, close: false, assign, logins: p.server || '', outcome, details, payload: JSON.stringify(p), dry_run: j.dry_run });\n}\nconst byT = {};\nfor (const c of calls) (byT[c.json.ticket_id] = byT[c.json.ticket_id] || []).push(c);\nfor (const [tid, cs] of Object.entries(byT)) {\n  const p = cs[0].json.plan, last = resOf(cs[cs.length - 1]) || {};\n  const exists = Array.isArray(servers) ? servers.some(s => s.name === p.server) : null;\n  const msg = String(last.message || last.output || last.error || '').slice(0, 300);\n  let ok, uk, en, close = true, detail;\n  if (p.action === 'deploy') {\n    ok = exists === true; close = false; detail = ok ? `сервер ${p.server} створено, чекаємо встановлення` : 'сервер не створено';\n    uk = `Розгортання CVAT запущено. Встановлення займає 10–15 хвилин, після нього на вашу пошту надійде лист з адресою та доступом менеджера проєкту.`;\n    en = `The CVAT deployment has started. It takes 10–15 minutes; then you will get an email with the address and the project manager login.`;\n  } else if (p.action === 'close') {\n    ok = exists === false; detail = ok ? `сервер ${p.server} видалено (зі снепшотом)` : `сервер ще існує. ${msg}`;\n    uk = `Сервер CVAT для проєкту видалено (перед цим зроблено знімок на випадок, якщо дані знадобляться).`;\n    en = `The CVAT server for the project has been deleted (a snapshot was taken first in case the data is needed).`;\n  } else if (p.action === 'pause') {\n    ok = last.success === true && exists !== false; detail = ok ? `${p.server} вимкнено` : `не вдалося вимкнути. ${msg}`;\n    uk = `Сервер CVAT вимкнено, дані збережено. Щоб увімкнути знову, створіть заявку «Відновлення CVAT».`;\n    en = `The CVAT server is switched off and the data is kept. To switch it on again, create a \"Restore CVAT\" ticket.`;\n  } else {\n    ok = last.success === true && exists !== false; detail = ok ? `${p.server} увімкнено` : `не вдалося увімкнути. ${msg}`;\n    uk = `Сервер CVAT увімкнено. Він може стати доступним через кілька хвилин, прошу перевірити.`;\n    en = `The CVAT server is switched on. It can take a few minutes to become available; please check.`;\n  }\n  if (ok) rows.push({ ticket_id: Number(tid), kind: 'cvat_' + p.action, note: polite(uk, en, Number(tid)), private: false, close, assign: false, logins: p.server, outcome: 'applied', details: detail, payload: JSON.stringify(p), dry_run: false });\n  else rows.push({ ticket_id: Number(tid), kind: 'cvat_' + p.action, note: `Агент: дію ${p.action} для ${p.server} виконано не повністю. ${detail}. Потрібна перевірка людиною.`, private: true, close: false, assign: true, logins: p.server, outcome: 'escalate', details: detail, payload: JSON.stringify(p), dry_run: false });\n}\nreturn rows.map(r => ({ json: { ...r, at: new Date().toISOString() } }));"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    3300,
+    0
+   ],
+   "id": "08e2a80f-08d7-40f0-ae94-42ffc82ea045",
+   "name": "Code: Build Report"
+  },
+  {
+   "parameters": {
+    "operation": "update",
+    "issueId": "={{ $json.ticket_id }}",
+    "notes": "={{ $json.note }}",
+    "private_notes": "={{ $json.private }}",
+    "additionalFields": {
+     "status_id": "={{ $json.close ? $('Config').first().json.resolved_status_id : undefined }}",
+     "assigned_to_id": "={{ $json.assign ? $('Config').first().json.admins_group_id : undefined }}"
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-redmine.redmine",
+   "typeVersion": 1,
+   "position": [
+    3520,
+    0
+   ],
+   "id": "31664559-67b5-4d96-b984-b98e54fa6cd6",
+   "name": "[Redmine] Update Ticket",
+   "credentials": {
+    "redmineApi": {
+     "id": "<REDMINE_CRED>",
+     "name": "Redmine <ENV> account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "resource": "row",
+    "operation": "insert",
+    "dataTableId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "<AUDIT_TABLE>"
+    },
+    "columns": {
+     "mappingMode": "defineBelow",
+     "matchingColumns": [],
+     "value": {
+      "ticket_id": "={{ $('Code: Build Report').item.json.ticket_id }}",
+      "kind": "={{ $('Code: Build Report').item.json.kind }}",
+      "logins": "={{ $('Code: Build Report').item.json.logins }}",
+      "outcome": "={{ $('Code: Build Report').item.json.outcome }}",
+      "dry_run": "={{ $('Code: Build Report').item.json.dry_run }}",
+      "details": "={{ $('Code: Build Report').item.json.details }}",
+      "at": "={{ $('Code: Build Report').item.json.at }}",
+      "payload": "={{ $('Code: Build Report').item.json.payload }}"
+     },
+     "schema": [
+      {
+       "id": "ticket_id",
+       "displayName": "ticket_id",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "number",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "kind",
+       "displayName": "kind",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "logins",
+       "displayName": "logins",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "outcome",
+       "displayName": "outcome",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "dry_run",
+       "displayName": "dry_run",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "boolean",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "details",
+       "displayName": "details",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "at",
+       "displayName": "at",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "payload",
+       "displayName": "payload",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      }
+     ]
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-base.dataTable",
+   "typeVersion": 1.1,
+   "position": [
+    3740,
+    0
+   ],
+   "id": "c4fa7918-d773-4a21-926a-31c3fe138ff0",
+   "name": "[Data Table] Log Result"
+  }
+ ],
+ "connections": {
+  "Every 5 Min": {
+   "main": [
+    [
+     {
+      "node": "Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Config": {
+   "main": [
+    [
+     {
+      "node": "[Data Table] Get Log",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Data Table] Get Log": {
+   "main": [
+    [
+     {
+      "node": "Code: Match Pending",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Code: Match Pending": {
+   "main": [
+    [
+     {
+      "node": "[Redmine] Get Ticket History",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Redmine] Get Ticket History": {
+   "main": [
+    [
+     {
+      "node": "[Redmine] Get IT Admins",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Redmine] Get IT Admins": {
+   "main": [
+    [
+     {
+      "node": "Code: Decide Apply",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Code: Decide Apply": {
+   "main": [
+    [
+     {
+      "node": "Apply Now?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Data Table] Log Applying": {
+   "main": [
+    [
+     {
+      "node": "Code: Build Calls",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Code: Build Calls": {
+   "main": [
+    [
+     {
+      "node": "Route: Action",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Hetzner] Get Servers": {
+   "main": [
+    [
+     {
+      "node": "Merge Results",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Merge Results": {
+   "main": [
+    [
+     {
+      "node": "Code: Build Report",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Code: Build Report": {
+   "main": [
+    [
+     {
+      "node": "[Redmine] Update Ticket",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Redmine] Update Ticket": {
+   "main": [
+    [
+     {
+      "node": "[Data Table] Log Result",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Apply Now?": {
+   "main": [
+    [
+     {
+      "node": "[Data Table] Log Applying",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Merge Results",
+      "type": "main",
+      "index": 1
+     }
+    ]
+   ]
+  },
+  "Route: Action": {
+   "main": [
+    [
+     {
+      "node": "Execute: Deploy Flow",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Execute: Hetzner Tool",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Execute: Deploy Flow": {
+   "main": [
+    [
+     {
+      "node": "Merge Calls",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Execute: Hetzner Tool": {
+   "main": [
+    [
+     {
+      "node": "Merge Calls",
+      "type": "main",
+      "index": 1
+     }
+    ]
+   ]
+  },
+  "Merge Calls": {
+   "main": [
+    [
+     {
+      "node": "[Hetzner] Get Servers",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1"
+ }
+}

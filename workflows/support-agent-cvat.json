@@ -1,0 +1,503 @@
+{
+ "name": "Автоматизатор: CVAT",
+ "nodes": [
+  {
+   "parameters": {
+    "content": "## Автоматизатор: CVAT\nКожні 5 хв бере нові нерозподілені задачі HelpDesk про CVAT: розгорнути, відновити, вимкнути, закрити.\nЗнаходить сервер cvat-* у Hetzner (лише читання), перевіряє, що дія можлива, і пише приватну нотатку з планом.\nВиконує флоу CVAT Apply після коментаря «Погоджую» від учасника «IT Адміни» (не автора).\nНесправності, оновлення, S3, паролі й консультації не чіпає.\n\n**DRY_RUN** (Config): true = нічого не змінює, лише нотатка й аудит.",
+    "height": 220,
+    "width": 640
+   },
+   "type": "n8n-nodes-base.stickyNote",
+   "typeVersion": 1,
+   "position": [
+    -200,
+    -320
+   ],
+   "id": "31bd6bbc-50ee-4fef-aa72-6af4f42ad8b3",
+   "name": "Sticky Note"
+  },
+  {
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "field": "minutes",
+       "minutesInterval": 5
+      }
+     ]
+    }
+   },
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.2,
+   "position": [
+    0,
+    0
+   ],
+   "id": "cdee49c3-c8f3-46c3-92e5-71c72ceb7238",
+   "name": "Every 5 Min"
+  },
+  {
+   "parameters": {
+    "assignments": {
+     "assignments": [
+      {
+       "id": "a1",
+       "name": "dry_run",
+       "value": true,
+       "type": "boolean"
+      },
+      {
+       "id": "a2",
+       "name": "project_id",
+       "value": "<PROJECT_ID>",
+       "type": "string"
+      },
+      {
+       "id": "a3",
+       "name": "tracker_id",
+       "value": "<TRACKER_ID>",
+       "type": "string"
+      },
+      {
+       "id": "a4",
+       "name": "redmine_url",
+       "value": "<REDMINE_URL>",
+       "type": "string"
+      },
+      {
+       "id": "a5",
+       "name": "server_type",
+       "value": "cpx42",
+       "type": "string"
+      },
+      {
+       "id": "a6",
+       "name": "admins_group_id",
+       "value": "35",
+       "type": "string"
+      }
+     ]
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-base.set",
+   "typeVersion": 3.4,
+   "position": [
+    220,
+    0
+   ],
+   "id": "f15ea4c2-a693-4d61-ac6f-75aadb8ea935",
+   "name": "Config"
+  },
+  {
+   "parameters": {
+    "resource": "row",
+    "operation": "get",
+    "dataTableId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "<AUDIT_TABLE>"
+    },
+    "returnAll": true,
+    "matchType": "anyCondition",
+    "filters": {}
+   },
+   "type": "n8n-nodes-base.dataTable",
+   "typeVersion": 1.1,
+   "position": [
+    440,
+    0
+   ],
+   "id": "9ad9e2d1-0022-4adb-a684-91b2a63346c9",
+   "name": "[Data Table] Get Processed",
+   "alwaysOutputData": true
+  },
+  {
+   "parameters": {
+    "operation": "getAll",
+    "returnAll": true,
+    "filters": {
+     "project_id": "={{ $('Config').first().json.project_id }}",
+     "tracker_id": "={{ $('Config').first().json.tracker_id }}",
+     "status_id": "1"
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-redmine.redmine",
+   "typeVersion": 1,
+   "position": [
+    660,
+    0
+   ],
+   "id": "3c041135-4a11-4de5-a55b-44b7dde5bc2d",
+   "name": "[Redmine] Get New Tickets",
+   "credentials": {
+    "redmineApi": {
+     "id": "<REDMINE_CRED>",
+     "name": "Redmine <ENV> account"
+    }
+   },
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 5000
+  },
+  {
+   "parameters": {
+    "jsCode": "const cfg = $('Config').first().json;\nconst dry = cfg.dry_run === true || cfg.dry_run === 'true';\nconst seen = new Set($('[Data Table] Get Processed').all()\n  .filter(i => i.json.kind !== 'dispatch' && (dry || i.json.dry_run === false)).map(i => String(i.json.ticket_id)));\nconst out = [];\nfor (const t of ($input.first().json.issues || [])) {\n  if ((t.assigned_to && String(t.assigned_to.id) !== String(cfg.admins_group_id)) || seen.has(String(t.id))) continue;\n  const subj = String(t.subject || '').toLowerCase(), desc = String(t.description || '');\n  if (!/cvat/.test(subj + ' ' + desc.toLowerCase())) continue;\n  // несправності, оновлення, S3, паролі, консультації: тільки люди\n  if (/(не завантаж|проблем|не працю|помилк|error|502|оновл|update|upgrade|sam2|aws|s3|bucket|парол|password|консульт|disk|диск|дост[уі]п)/.test(subj)) continue;\n  const acts = [];\n  if (/(da tool installation|розгор|встановл|створенн|створити)/.test(subj) || /^\\s*tool:\\s*cvat/i.test(desc)) acts.push('deploy');\n  if (/(відновл|restore|повернут|увімкн|запуст)/.test(subj)) acts.push('resume');\n  if (/(пауз|вимкн)/.test(subj)) acts.push('pause');\n  if (/(закрит|видал|завершен)/.test(subj)) acts.push('close');\n  const base = { ticket_id: t.id, author_id: t.author && t.author.id, action: acts[0] || '', project: '', reason: '' };\n  if (acts.length !== 1) { out.push({ ...base, action: 'escalate', reason: acts.length ? 'в заявці кілька різних дій' : 'не зрозуміла дія' }); continue; }\n  let p = (desc.match(/project:\\s*([^\\n]+?)\\s*(?:data\\s*set:|super\\s*user|$)/i) || [])[1] || '';\n  if (!p) p = (`${t.subject} ${desc}`.match(/cvat-([a-z0-9-]+)\\.examples?\\.(?:tech|com)/i) || [])[1] || '';\n  if (!p) p = (`${t.subject} ${desc}`.match(/\\bcvat-([a-z0-9][a-z0-9-]*)/i) || [])[1] || '';\n  if (!p) p = (String(t.subject).match(/\\(([^)]+)\\)/) || [])[1] || '';\n  if (!p) p = (String(t.subject).match(/(?:cvat|дел|tool)\\s*[-:]?\\s*([A-Za-z0-9-]+)\\s*$/i) || [])[1] || '';\n  out.push({ ...base, project: p.trim() });\n}\nreturn out.map(json => ({ json }));"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    880,
+    0
+   ],
+   "id": "111b154d-4947-41e1-83fd-3153b360850a",
+   "name": "Code: Parse Tickets"
+  },
+  {
+   "parameters": {
+    "url": "={{ $('Config').first().json.redmine_url + '/users/' + $json.author_id + '.json' }}",
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpHeaderAuth",
+    "options": {
+     "response": {
+      "response": {
+       "fullResponse": true,
+       "neverError": true
+      }
+     }
+    }
+   },
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    1100,
+    0
+   ],
+   "id": "66dbc3a7-7893-48b7-bf25-ce3fda633f16",
+   "name": "[Redmine] Get Author",
+   "credentials": {
+    "httpHeaderAuth": {
+     "id": "<REDMINE_HTTP_CRED>",
+     "name": "Redmine HTTP header auth"
+    }
+   },
+   "onError": "continueRegularOutput",
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 5000
+  },
+  {
+   "parameters": {
+    "url": "https://api.hetzner.cloud/v1/servers",
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpBearerAuth",
+    "sendQuery": true,
+    "queryParameters": {
+     "parameters": [
+      {
+       "name": "per_page",
+       "value": "50"
+      }
+     ]
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    1320,
+    0
+   ],
+   "id": "3dfeef4d-4792-4897-9899-236fbd8f4ea2",
+   "name": "[Hetzner] List Servers",
+   "credentials": {
+    "httpBearerAuth": {
+     "id": "<HETZNER_CRED>",
+     "name": "Hetzner Cloud"
+    }
+   },
+   "executeOnce": true,
+   "onError": "continueRegularOutput",
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 5000
+  },
+  {
+   "parameters": {
+    "jsCode": "const cfg = $('Config').first().json;\nconst dry = cfg.dry_run === true || cfg.dry_run === 'true';\nconst items = $('Code: Parse Tickets').all();\nconst authors = $('[Redmine] Get Author').all();\nconst list = (($('[Hetzner] List Servers').first().json || {}).servers);\nif (!Array.isArray(list)) return [];                 // Hetzner недоступний: нічого не логуємо, спробуємо на наступному запуску\nconst servers = list.filter(s => /^cvat-/.test(s.name));\nconst norm = s => String(s || '').toLowerCase().replace(/^cvat-/, '').replace(/[^a-z0-9]/g, '');\nconst clean = s => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');\nreturn items.map(({ json: t }, i) => {\n  const r = { ticket_id: t.ticket_id, dry_run: dry, action: t.action, plan: null, reason: '' };\n  if (t.action === 'escalate') return { json: { ...r, reason: t.reason } };\n  const u = ((authors[i].json.body || {}).user) || {};\n  const proj = clean(t.project);\n  if (!proj) return { json: { ...r, action: 'escalate', reason: 'не вдалося визначити назву проєкту (потрібна латиниця)' } };\n  const found = servers.filter(s => norm(s.name) === norm(proj));\n  if (t.action === 'deploy') {\n    if (found.length) return { json: { ...r, action: 'escalate', reason: `сервер ${found[0].name} уже існує (${found[0].status})` } };\n    if (!/^[A-Za-z0-9_.-]{2,32}$/.test(u.login || '')) return { json: { ...r, action: 'escalate', reason: 'логін автора заявки не підходить для CVAT (потрібні латиниця, цифри, _ . -)' } };\n    if (!u.mail) return { json: { ...r, action: 'escalate', reason: 'у автора заявки немає пошти в Redmine' } };\n    return { json: { ...r, plan: { action: 'deploy', server: 'cvat-' + proj, project: proj, type: cfg.server_type, login: u.login, email: String(u.mail).toLowerCase() } } };\n  }\n  if (found.length !== 1) return { json: { ...r, action: 'escalate', reason: found.length ? `назві «${t.project}» відповідає кілька серверів: ${found.map(s => s.name).join(', ')}` : `сервера для «${t.project}» немає в Hetzner (відновлення зі снепшота, якщо потрібне, робить людина)` } };\n  const s = found[0];\n  if (t.action === 'pause' && s.status !== 'running') return { json: { ...r, action: 'escalate', reason: `${s.name} уже не працює (статус ${s.status})` } };\n  if (t.action === 'resume' && s.status !== 'off') return { json: { ...r, action: 'escalate', reason: `${s.name} не вимкнено (статус ${s.status})` } };\n  if (t.action === 'close' && s.protection && s.protection.delete) return { json: { ...r, action: 'escalate', reason: `${s.name} захищено від видалення в Hetzner` } };\n  return { json: { ...r, plan: { action: t.action, server: s.name, project: proj, server_id: s.id, status: s.status } } };\n});"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1540,
+    0
+   ],
+   "id": "bcdc8645-6c21-4c67-8e45-74830f10a882",
+   "name": "Code: Plan"
+  },
+  {
+   "parameters": {
+    "jsCode": "const WHAT = { deploy: 'розгорнути новий CVAT', resume: 'увімкнути вимкнений сервер', pause: 'вимкнути сервер (дані зберігаються, його можна увімкнути знову)', close: 'ВИДАЛИТИ сервер (спершу автоматично зробити снепшот)' };\nreturn $input.all().map(({ json: j }) => {\n  const p = j.plan, ok = j.action !== 'escalate' && p;\n  let note, outcome, payload = '', details, kind = 'cvat_' + (p ? p.action : (j.action === 'escalate' ? 'escalate' : j.action));\n  if (ok) {\n    outcome = 'awaiting_approval'; payload = JSON.stringify(p);\n    details = `${p.action}: ${p.server}`;\n    const extra = p.action === 'deploy' ? ` Тариф ${p.type}, менеджер проєкту ${p.login}. Після встановлення (10–15 хв) доступи прийдуть листом: автору заявки (адреса й доступ менеджера проєкту), адміністраторам (повний набір).` : '';\n    note = `Агент підготував: ${WHAT[p.action]} ${p.server}.${extra} Щоб виконати, учасник «IT Адміни» (не автор заявки) пише в задачі коментар «Погоджую». Через 7 днів без підтвердження дію скасовано.`;\n    if (j.dry_run) note = `DRY RUN (змін не внесено). Агент підготував би: ${WHAT[p.action]} ${p.server}.${extra} І чекав би «Погоджую».`;\n  } else {\n    outcome = 'escalate'; details = j.reason;\n    note = (j.dry_run ? 'DRY RUN (змін не внесено). Агент передав би задачу адміністраторам.' : 'Агент: автоматично не обробляю.') + ` Причина: ${j.reason}.` + (j.dry_run ? '' : ' Передано адміністраторам.');\n  }\n  return { json: { ticket_id: j.ticket_id, kind, note, private: true, assign: !j.dry_run && !ok, logins: p ? p.server : '', outcome, details, payload, dry_run: j.dry_run, at: new Date().toISOString() } };\n});"
+   },
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1760,
+    0
+   ],
+   "id": "8d9340cf-4d93-4499-b549-b52dc0ad0f0f",
+   "name": "Code: Build Report"
+  },
+  {
+   "parameters": {
+    "operation": "update",
+    "issueId": "={{ $json.ticket_id }}",
+    "notes": "={{ $json.note }}",
+    "private_notes": "={{ $json.private }}",
+    "additionalFields": {
+     "assigned_to_id": "={{ $json.assign ? $('Config').first().json.admins_group_id : undefined }}"
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-redmine.redmine",
+   "typeVersion": 1,
+   "position": [
+    1980,
+    0
+   ],
+   "id": "dd069d62-ee6d-45cf-bf9a-c053dd2964b0",
+   "name": "[Redmine] Update Ticket",
+   "credentials": {
+    "redmineApi": {
+     "id": "<REDMINE_CRED>",
+     "name": "Redmine <ENV> account"
+    }
+   },
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "resource": "row",
+    "operation": "insert",
+    "dataTableId": {
+     "__rl": true,
+     "mode": "id",
+     "value": "<AUDIT_TABLE>"
+    },
+    "columns": {
+     "mappingMode": "defineBelow",
+     "matchingColumns": [],
+     "value": {
+      "ticket_id": "={{ $('Code: Build Report').item.json.ticket_id }}",
+      "kind": "={{ $('Code: Build Report').item.json.kind }}",
+      "logins": "={{ $('Code: Build Report').item.json.logins }}",
+      "outcome": "={{ $('Code: Build Report').item.json.outcome }}",
+      "dry_run": "={{ $('Code: Build Report').item.json.dry_run }}",
+      "details": "={{ $('Code: Build Report').item.json.details }}",
+      "at": "={{ $('Code: Build Report').item.json.at }}",
+      "payload": "={{ $('Code: Build Report').item.json.payload }}"
+     },
+     "schema": [
+      {
+       "id": "ticket_id",
+       "displayName": "ticket_id",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "number",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "kind",
+       "displayName": "kind",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "logins",
+       "displayName": "logins",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "outcome",
+       "displayName": "outcome",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "dry_run",
+       "displayName": "dry_run",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "boolean",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "details",
+       "displayName": "details",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "at",
+       "displayName": "at",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      },
+      {
+       "id": "payload",
+       "displayName": "payload",
+       "required": false,
+       "defaultMatch": false,
+       "display": true,
+       "type": "string",
+       "canBeUsedToMatch": true
+      }
+     ]
+    },
+    "options": {}
+   },
+   "type": "n8n-nodes-base.dataTable",
+   "typeVersion": 1.1,
+   "position": [
+    2200,
+    0
+   ],
+   "id": "b3615f50-84f3-41c2-b600-02d4ec9bd35a",
+   "name": "[Data Table] Log Result"
+  }
+ ],
+ "connections": {
+  "Every 5 Min": {
+   "main": [
+    [
+     {
+      "node": "Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Config": {
+   "main": [
+    [
+     {
+      "node": "[Data Table] Get Processed",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Data Table] Get Processed": {
+   "main": [
+    [
+     {
+      "node": "[Redmine] Get New Tickets",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Redmine] Get New Tickets": {
+   "main": [
+    [
+     {
+      "node": "Code: Parse Tickets",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Code: Parse Tickets": {
+   "main": [
+    [
+     {
+      "node": "[Redmine] Get Author",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Redmine] Get Author": {
+   "main": [
+    [
+     {
+      "node": "[Hetzner] List Servers",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Hetzner] List Servers": {
+   "main": [
+    [
+     {
+      "node": "Code: Plan",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Code: Plan": {
+   "main": [
+    [
+     {
+      "node": "Code: Build Report",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Code: Build Report": {
+   "main": [
+    [
+     {
+      "node": "[Redmine] Update Ticket",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "[Redmine] Update Ticket": {
+   "main": [
+    [
+     {
+      "node": "[Data Table] Log Result",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1"
+ }
+}
