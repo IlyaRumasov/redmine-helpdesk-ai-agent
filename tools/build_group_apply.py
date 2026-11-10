@@ -59,7 +59,7 @@ pend.forEach(({ json: t }, i) => {
     if (Date.now() - Date.parse(t.prepared_at) > maxAge) { out.push({ json: { ...r, action: 'cancel', reason: `немає підтвердження понад ${cfg.pending_days} днів` } }); return; }
     return;  // ще чекаємо
   }
-  out.push({ json: { ...r, action: 'apply', approved_by: ok[0].user.name } });
+  out.push({ json: { ...r, action: 'apply', approved_by: ok[0].user.name, approver_id: ok[0].user.id } });
 });
 return out;
 """
@@ -96,7 +96,7 @@ for (const t of Object.values(live)) {
   const p = t.plan, ok = t.ok.join(', ');
   let note, outcome, close = false, assign = false, details, pub = false;
   if (!t.bad.length) {
-    outcome = 'applied'; close = true; pub = true; details = `додано до групи: ${ok}`;
+    outcome = 'applied'; close = true; pub = true; details = `додано до групи: ${ok}, підтвердив ${t.approved_by}`;
     note = polite(`${t.ok.length > 1 ? 'Користувачів' : 'Користувача'} ${ok} додано до групи «${p.group_name}». Проєкти за замовчуванням мають з'явитися після повторного входу в Redmine (вийдіть і зайдіть знову).`,
       `${ok} ${t.ok.length > 1 ? 'have' : 'has'} been added to the "${p.group_name}" group. The default projects should appear after you sign out of Redmine and sign in again.`, t.ticket_id);
   } else {
@@ -104,7 +104,7 @@ for (const t of Object.values(live)) {
     details = `не вдалося додати: ${t.bad.join(', ')}` + (ok ? `; додано: ${ok}` : '');
     note = `Агент: додавання до групи виконано не повністю. ${details}. Потрібна перевірка людиною.`;
   }
-  rows.push({ ticket_id: t.ticket_id, note, private: !pub, close, assign, logins: t.users ? t.users.mail : '', outcome, details, payload: JSON.stringify(p), dry_run: false });
+  rows.push({ ticket_id: t.ticket_id, note, private: !pub, close, assign, approver_id: close ? t.approver_id : undefined, logins: t.users ? t.users.mail : '', outcome, details, payload: JSON.stringify(p), dry_run: false });
 }
 return rows.map(r => ({ json: { ...r, kind: 'group_add', at: new Date().toISOString() } }));
 """
@@ -173,7 +173,7 @@ def build(rm_id, rm_name, http_id, http_name, table_id):
          "private_notes": "={{ $json.private }}",
          "additionalFields": {"customFields": {"field": [{"id": "92", "value": "={{ $json.close ? 'Выдача/передача доступа' : '' }}"}]},
                               "status_id": "={{ $json.close ? $('Config').first().json.resolved_status_id : undefined }}",
-                              "assigned_to_id": "={{ $json.assign ? $('Config').first().json.admins_group_id : undefined }}"},
+                              "assigned_to_id": "={{ $json.assign ? $('Config').first().json.admins_group_id : ($json.approver_id || undefined) }}"},
          "options": {}}, 2860, 0, credentials=rmc, onError="continueRegularOutput")
     cols = [("ticket_id", "number"), ("kind", "string"), ("logins", "string"), ("outcome", "string"), ("dry_run", "boolean"),
             ("details", "string"), ("at", "string"), ("payload", "string")]

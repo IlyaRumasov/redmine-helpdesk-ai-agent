@@ -124,7 +124,8 @@ def main():
     ap.add_argument("--exclude", help="JSON-файл зі списком id заявок, яких не завантажувати (контрольна вибірка для оцінки)")
     ap.add_argument("--ids", help="JSON-файл зі списком id заявок: завантажити лише їх (щотижневе оновлення)")
     ap.add_argument("--playbooks", help="markdown із затвердженими плейбуками замість заявок; старі шматки плейбуків у колекції замінюються")
-    ap.add_argument("--only", help="номери плейбуків через кому (лише затверджені), напр. 1,2,5")
+    ap.add_argument("--append", action="store_true", help="з --playbooks: не видаляти старі плейбуки, лише додати/оновити вказані (за стабільними id)")
+    ap.add_argument("--only",help="номери плейбуків через кому (лише затверджені), напр. 1,2,5")
     a = ap.parse_args()
     sys.stdout.reconfigure(encoding="utf-8")
     if a.playbooks:
@@ -148,7 +149,7 @@ def main():
     if a.dry:
         return
     ensure_collection(a.collection)
-    if a.playbooks:
+    if a.playbooks and not a.append:
         delete_playbooks(a.collection)
     done = 0
     for s in range(0, len(items), a.batch):

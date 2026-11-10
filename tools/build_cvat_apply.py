@@ -52,6 +52,7 @@ for (const { json: j } of $input.all()) {
   else { outcome = j.dry_run ? 'dry_escalate' : 'escalate'; assign = !j.dry_run; note = `Агент: дію з CVAT не виконано. Причина: ${details}. Потрібна перевірка людиною.`; }
   rows.push({ ticket_id: j.ticket_id, kind: 'cvat_' + (p.action || 'escalate'), note, private: true, close: false, assign, logins: p.server || '', outcome, details, payload: JSON.stringify(p), dry_run: j.dry_run });
 }
+const apprOf = id => { try { const d = $('Code: Decide Apply').all().find(x => String(x.json.ticket_id) === String(id)); return d ? d.json.approver_id : undefined; } catch (e) { return undefined; } };
 const byT = {};
 for (const c of calls) (byT[c.json.ticket_id] = byT[c.json.ticket_id] || []).push(c);
 for (const [tid, cs] of Object.entries(byT)) {
@@ -76,7 +77,7 @@ for (const [tid, cs] of Object.entries(byT)) {
     uk = `Сервер CVAT увімкнено. Він може стати доступним через кілька хвилин, прошу перевірити.`;
     en = `The CVAT server is switched on. It can take a few minutes to become available; please check.`;
   }
-  if (ok) rows.push({ ticket_id: Number(tid), kind: 'cvat_' + p.action, note: polite(uk, en, Number(tid)), private: false, close, assign: false, logins: p.server, outcome: 'applied', details: detail, payload: JSON.stringify(p), dry_run: false });
+  if (ok) rows.push({ ticket_id: Number(tid), kind: 'cvat_' + p.action, note: polite(uk, en, Number(tid)), private: false, close, assign: false, approver_id: apprOf(tid), logins: p.server, outcome: 'applied', details: detail, payload: JSON.stringify(p), dry_run: false });
   else rows.push({ ticket_id: Number(tid), kind: 'cvat_' + p.action, note: `Агент: дію ${p.action} для ${p.server} виконано не повністю. ${detail}. Потрібна перевірка людиною.`, private: true, close: false, assign: true, logins: p.server, outcome: 'escalate', details: detail, payload: JSON.stringify(p), dry_run: false });
 }
 return rows.map(r => ({ json: { ...r, at: new Date().toISOString() } }));
@@ -165,7 +166,7 @@ def build(rm_id, rm_name, http_id, http_name, table_id, hz_id="<HETZNER_CRED>", 
          "private_notes": "={{ $json.private }}",
          "additionalFields": {"customFields": {"field": [{"id": "92", "value": "={{ $json.close ? 'Создание нового сервера/сервиса/ресурса' : '' }}"}]},
                               "status_id": "={{ $json.close ? $('Config').first().json.resolved_status_id : undefined }}",
-                              "assigned_to_id": "={{ $json.assign ? $('Config').first().json.admins_group_id : undefined }}"},
+                              "assigned_to_id": "={{ $json.assign ? $('Config').first().json.admins_group_id : ($json.approver_id || undefined) }}"},
          "options": {}}, 3520, 0, credentials=rmc, onError="continueRegularOutput")
     node("[Data Table] Log Result", "n8n-nodes-base.dataTable", {"resource": "row", "operation": "insert", "dataTableId": table, "columns": {
         "mappingMode": "defineBelow", "matchingColumns": [],

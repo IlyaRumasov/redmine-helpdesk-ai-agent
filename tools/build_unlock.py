@@ -63,18 +63,21 @@ return out.map(json => ({ json }));
 
 DECIDE_JS = r"""
 const ins = $('Split Out Logins').all();
-const found = $input.all();
-if (ins.length !== found.length) throw new Error(`Пошук повернув ${found.length} відповідей на ${ins.length} логінів`);
+const found = $('[Redmine] Find Locked User').all();
+const act = $input.all();
+if (ins.length !== found.length || ins.length !== act.length) throw new Error(`Пошук повернув ${found.length} і ${act.length} відповідей на ${ins.length} логінів`);
 const admins = new Set((($('[Redmine] Get Locked IT Admins').first().json.users) || []).map(u => String(u.id)));
 return ins.map((it, i) => {
   const login = it.json.logins;
   const users = ((found[i].json.users) || []).filter(u => String(u.login).toLowerCase() === login);
-  const r = { ticket_id: it.json.ticket_id, login, user_id: null, action: 'skip', blocked: false,
-              reason: 'не знайдено серед заблокованих (такого логіну немає або обліковка вже активна)' };
-  if (users.length > 1) r.reason = 'кілька збігів за логіном';
+  const active = ((act[i].json.users) || []).some(u => String(u.login).toLowerCase() === login);
+  const r = { ticket_id: it.json.ticket_id, login, user_id: null, action: 'skip', blocked: false, code: active ? 'active' : 'missing',
+              reason: active ? 'обліковий запис уже активний у Redmine, розблоковувати нічого (можливо, потрібен пароль, а не розблокування)'
+                             : 'облікового запису в Redmine немає: людина ще не входила під корпоративним обліковим записом або логін написано з помилкою (перевірте AD і попросіть увійти в Redmine)' };
+  if (users.length > 1) { r.code = 'other'; r.reason = 'кілька збігів за логіном'; }
   else if (users.length === 1) {
     const u = users[0];
-    r.user_id = u.id;
+    r.user_id = u.id; r.code = 'other';
     if (u.admin) { r.blocked = true; r.reason = 'адміністратор Redmine, розблоковує тільки людина'; }
     else if (admins.has(String(u.id))) { r.blocked = true; r.reason = 'входить до групи IT, розблоковує тільки людина'; }
     else { r.action = 'unlock'; r.reason = ''; }
@@ -120,17 +123,17 @@ const cfg = $('Config').first().json;
 const dry = cfg.dry_run === true || cfg.dry_run === 'true';
 const g = {};
 for (const { json: j } of $input.all()) {
-  const t = g[j.ticket_id] = g[j.ticket_id] || { id: j.ticket_id, unlock: [], failed: [], esc: null };
+  const t = g[j.ticket_id] = g[j.ticket_id] || { id: j.ticket_id, unlock: [], failed: [], esc: null, active: [], missing: [], other: 0 };
   if (j.kind === 'escalate') t.esc = j.reason;
   else if (j.action === 'unlock') {
     if (dry || j.unlocked === 'yes') t.unlock.push(j.login);
     else t.failed.push(`${j.login}: помилка розблокування (${j.error})`);
-  } else t.failed.push(`${j.login}: ${j.reason}`);
+  } else { t.failed.push(`${j.login}: ${j.reason}`); if (j.code === 'active') t.active.push(j.login); else if (j.code === 'missing') t.missing.push(j.login); else t.other++; }
 }
 const out = Object.values(g).map(t => {
   const logins = t.unlock.join(', ');
   const failed = t.failed.join('; ');
-  let note, noteEn = '', kind, close = false, assign = false;
+  let note, noteEn = '', kind, close = false, assign = false, ask = false, noteAsk = '', noteAskEn = '';
   if (t.esc) {
     kind = 'escalate'; assign = true;
     note = `Агент: автоматично не обробляю. Причина: ${t.esc}. Передано адміністраторам.`;
@@ -141,12 +144,28 @@ const out = Object.values(g).map(t => {
   } else {
     kind = 'escalate'; assign = true;
     note = `Агент: розблоковано: ${logins || 'ніхто'}. Не вдалося: ${failed}. Потрібна перевірка людиною, задачу передано адміністраторам.`;
+    if (!t.other && (t.active.length || t.missing.length)) {   // зрозуміла причина: питаємо автора публічно, задача все одно йде адміністраторам
+      ask = true;
+      const ukP = [], enP = [];
+      if (t.active.length) {
+        ukP.push(`Обліковий запис ${t.active.join(', ')} у Redmine активний і не заблокований, тому розблоковувати нічого. Щоб допомогти, уточніть, будь ласка, що саме не вдається: надішліть скріншот усього екрана з помилкою (щоб було видно адресу сторінки й текст помилки) та напишіть, з якого пристрою й браузера входите.`);
+        enP.push(`The Redmine account ${t.active.join(', ')} is active and not locked, so there is nothing to unlock. To help, please tell us what exactly fails: send a screenshot of the whole screen with the error (the page address and the error text should be visible) and say which device and browser you use.`);
+      }
+      if (t.missing.length) {
+        ukP.push(`Облікового запису ${t.missing.join(', ')} у Redmine не знайдено. Перевірте, будь ласка, логін (формат ім'я.прізвище) або вкажіть робочу пошту людини. Якщо людина ще не входила в Redmine, їй потрібно увійти під своїм корпоративним обліковим записом.`);
+        enP.push(`No Redmine account ${t.missing.join(', ')} was found. Please check the login (first.last format) or give the person's work email. If the person has never signed in to Redmine, they need to sign in with their corporate account.`);
+      }
+      noteAsk = ukP.join('\n\n') + '\n\nІнженер IT також подивиться заявку.';
+      noteAskEn = enP.join('\n\n') + '\n\nAn IT engineer will also look at the ticket.';
+    }
   }
   const details = t.esc || failed;
   if (dry) {
     note = `DRY RUN (змін не внесено). Агент ${kind === 'unlock' ? 'розблокував би ' + logins + ' і закрив би задачу' : 'передав би задачу адміністраторам'}. ${t.esc ? 'Причина: ' + t.esc : (failed ? 'Не вдалося б: ' + failed : '')}`.trim();
     close = false; assign = false;
   }
+  if (ask && !dry) return { json: { ticket_id: t.id, kind, note: polite(noteAsk, noteAskEn, t.id), private: false, close: false, assign,
+                   logins, outcome: kind, details, dry_run: dry, at: new Date().toISOString() } };
   return { json: { ticket_id: t.id, kind, note: (dry || kind === 'escalate') ? note : polite(note, noteEn, t.id), private: dry || kind === 'escalate', close, assign,
                    logins, outcome: kind, details, dry_run: dry, at: new Date().toISOString() } };
 });
@@ -212,6 +231,8 @@ def build(cred_id, cred_name, table_id):
     node("Split Out Logins", "n8n-nodes-base.splitOut", {"fieldToSplitOut": "logins", "include": "allOtherFields", "options": {}}, 1540, -120, ver=1)
     node("[Redmine] Find Locked User", RM, {"resource": "user", "operation": "getAll", "returnAll": True,
          "filters": {"name": "={{ $json.logins }}", "status": "3"}, "options": {}}, 1760, -120, credentials=cred, alwaysOutputData=True)
+    node("[Redmine] Find Active User", RM, {"resource": "user", "operation": "getAll", "returnAll": True,
+         "filters": {"name": "={{ $('Split Out Logins').item.json.logins }}", "status": "1"}, "options": {}}, 1870, -20, credentials=cred, alwaysOutputData=True)
     node("Code: Decide Unlock", "n8n-nodes-base.code", {"jsCode": DECIDE_JS.strip()}, 1980, -120, ver=2)
     node("Can Unlock Live?", "n8n-nodes-base.if", {"conditions": {"options": {"caseSensitive": True, "leftValue": "", "typeValidation": "strict", "version": 2},
          "conditions": [{"id": "c1", "leftValue": "={{ $json.action === 'unlock' && $('Config').first().json.dry_run === false }}",
@@ -257,7 +278,7 @@ def build(cred_id, cred_name, table_id):
     for a, b in [("Every 5 Min", "Config"), ("Config", "[Redmine] Get Locked IT Admins"), ("[Redmine] Get Locked IT Admins", "[Data Table] Get Processed"),
                  ("[Data Table] Get Processed", "[Redmine] Get New Tickets"), ("[Redmine] Get New Tickets", "Code: Parse Tickets"),
                  ("Code: Parse Tickets", "Route by Type"), ("Split Out Logins", "[Redmine] Find Locked User"),
-                 ("[Redmine] Find Locked User", "Code: Decide Unlock"), ("Code: Decide Unlock", "Can Unlock Live?"),
+                 ("[Redmine] Find Locked User", "[Redmine] Find Active User"), ("[Redmine] Find Active User", "Code: Decide Unlock"), ("Code: Decide Unlock", "Can Unlock Live?"),
                  ("[Redmine] Unlock User", "Mark Unlocked"), ("Merge Results", "Code: Build Report"),
                  ("Code: Build Report", "[Redmine] Update Ticket"), ("[Redmine] Update Ticket", "[Data Table] Log Result")]:
         link(a, b)

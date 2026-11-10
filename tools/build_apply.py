@@ -70,7 +70,7 @@ for (const { json: t } of $('Code: Match Pending').all()) {
     if (Date.now() - Date.parse(t.prepared_at) > maxAge) { out.push({ json: { ...r, action: 'cancel', reason: `немає підтвердження понад ${cfg.pending_days} днів` } }); continue; }
     continue; // ще чекаємо
   }
-  r.approved_by = ok[0].user.name;
+  r.approved_by = ok[0].user.name; r.approver_id = ok[0].user.id;
   const hits = ad.filter(u => String(one(u.sAMAccountName)).toLowerCase() === t.plan.login);
   if (hits.length !== 1) { esc(`логін ${t.plan.login} не знайдено в AD`); continue; }
   const u = hits[0];
@@ -140,7 +140,7 @@ return $input.all().map(({ json: j }) => {
     close = false; assign = false;
   }
   return { json: { ticket_id: j.ticket_id, kind, note: (j.dry_run || kind !== 'set_mail') ? note : polite(note, noteEn, j.ticket_id), private: j.dry_run || kind !== 'set_mail', close, assign,
-                   logins: p.login || '', outcome: kind === 'set_mail' && !j.dry_run ? 'applied' : kind, details,
+                   logins: p.login || '', outcome: kind === 'set_mail' && !j.dry_run ? 'applied' : kind, details, approver_id: kind === 'set_mail' && !j.dry_run ? j.approver_id : undefined,
                    payload: JSON.stringify(p), dry_run: j.dry_run, at: new Date().toISOString() } };
 });
 """
@@ -212,7 +212,7 @@ def build(rm_id, rm_name, ldap_id, ldap_name, table_id):
          "private_notes": "={{ $json.private }}",
          "additionalFields": {"customFields": {"field": [{"id": "92", "value": "={{ $json.close ? 'Восстановление доступа' : '' }}"}]},
                               "status_id": "={{ $json.close ? $('Config').first().json.resolved_status_id : undefined }}",
-                              "assigned_to_id": "={{ $json.assign ? $('Config').first().json.admins_group_id : undefined }}"},
+                              "assigned_to_id": "={{ $json.assign ? $('Config').first().json.admins_group_id : ($json.approver_id || undefined) }}"},
          "options": {}}, 3080, 0, credentials=rmc, onError="continueRegularOutput")
     cols = [("ticket_id", "number"), ("kind", "string"), ("logins", "string"), ("outcome", "string"), ("dry_run", "boolean"),
             ("details", "string"), ("at", "string"), ("payload", "string")]

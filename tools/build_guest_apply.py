@@ -62,7 +62,7 @@ pend.forEach(({ json: t }, i) => {
     if (Date.now() - Date.parse(t.prepared_at) > maxAge) { out.push({ json: { ...r, action: 'cancel', reason: `немає підтвердження понад ${cfg.pending_days} днів` } }); return; }
     return;  // ще чекаємо
   }
-  r.approved_by = ok[0].user.name;
+  r.approved_by = ok[0].user.name; r.approver_id = ok[0].user.id;
   // ще раз звіряємо гостя: той самий акаунт, прив'язаний до цієї робочої пошти, без прав адміністратора
   const g = google[i] && google[i].json || {};
   const b = g.body || {};
@@ -172,7 +172,7 @@ return $input.all().map(({ json: j }) => {
   let note, noteEn = '', outcome, close = false, assign = false, details = j.reason || '';
   if (j.action === 'apply' && !failed) {
     outcome = 'applied'; close = true;
-    details = p.send_codes ? 'тимчасовий пароль і резервні коди надіслано' : 'тимчасовий пароль надіслано';
+    details = (p.send_codes ? 'тимчасовий пароль і резервні коди надіслано' : 'тимчасовий пароль надіслано') + ', підтвердив ' + j.approved_by;
     note = `${p.send_codes ? 'Тимчасовий пароль і резервні коди' : 'Тимчасовий пароль'} для гостьового акаунту ${p.guest} надіслано на робочу пошту ${p.work_mail}`
       + `${p.send_codes ? ' окремими листами' : ''}. Увійдіть під повною адресою гостьового акаунту, задайте новий пароль${p.send_codes ? ', на другому кроці оберіть «Інший спосіб» -> «Резервний код»' : ''} і одразу налаштуйте двоетапну перевірку.`;
     noteEn = `${p.send_codes ? 'A temporary password and backup codes' : 'A temporary password'} for the guest account ${p.guest} ${p.send_codes ? 'have' : 'has'} been sent to your work address ${p.work_mail}${p.send_codes ? ' in separate emails' : ''}. Sign in with the full guest account address, set a new password${p.send_codes ? ', and at the second step choose "Try another way" -> "Enter a backup code"' : ''}, then set up 2-Step Verification right away.`;
@@ -189,7 +189,7 @@ return $input.all().map(({ json: j }) => {
     close = false; assign = false;
   }
   return { json: { ticket_id: j.ticket_id, kind: 'guest_access', note: (j.dry_run || outcome !== 'applied') ? note : polite(note, noteEn, j.ticket_id), private: j.dry_run || outcome !== 'applied', close, assign,
-                   logins: p.login || '', outcome: j.dry_run ? 'dry_' + outcome : outcome, details, payload: JSON.stringify(p), dry_run: j.dry_run, at: new Date().toISOString() } };
+                   logins: p.login || '', outcome: j.dry_run ? 'dry_' + outcome : outcome, details, approver_id: outcome === 'applied' && !j.dry_run ? j.approver_id : undefined, payload: JSON.stringify(p), dry_run: j.dry_run, at: new Date().toISOString() } };
 });
 """
 
@@ -226,7 +226,7 @@ def build(rm_id, rm_name, g_id, g_name, smtp_id, smtp_name, table_id):
         "subject": "={{ $('Code: Build Mails').item.json.%s }}" % subj, "emailFormat": "text",
         "text": "={{ $('Code: Build Mails').item.json.%s }}" % text, "options": {"appendAttribution": False}},
         x, y, ver=2.1, credentials=smtp, onError="continueErrorOutput",
-        retryOnFail=True, maxTries=4, waitBetweenTries=20000)  # SMTP-релей Google інколи відповідає 421 «Try again later»
+        retryOnFail=True, maxTries=5, waitBetweenTries=5000)  # SMTP-релей Google інколи відповідає 421 «Try again later»
 
     node("Sticky Note", "n8n-nodes-base.stickyNote", {"content": (
         "## Автоматизатор: Google Guest Apply\n"
@@ -277,6 +277,20 @@ def build(rm_id, rm_name, g_id, g_name, smtp_id, smtp_name, table_id):
     mail("[Mail] Send Password", "pw_subject", "pw_text", 3520, -300)
     if_true("Send Codes Mail?", "={{ $('Code: Build Mails').item.json.has_codes === true }}", 3740, -300)
     mail("[Mail] Send Codes", "codes_subject", "codes_text", 3960, -400)
+    # цикл повтору листа: n8n сам повторює вузол лише ~5 с, а відмова Google 421 триває хвилини; пауза <=60 с тримається в пам'яті (паролі не потрапляють у БД)
+    RETRY_JS = "const n = $runIndex + 1;\nreturn { json: { ...$json, retry_no: n, retry_left: n < 3 } };"
+    for who, mx, my in (("Password", 3520, -120), ("Codes", 3960, -220)):
+        node(f"Code: Retry {who}", "n8n-nodes-base.code", {"mode": "runOnceForEachItem", "jsCode": RETRY_JS}, mx, my, ver=2)
+        if_true(f"More Retries {who}?", "={{ $json.retry_left === true }}", mx + 220, my)
+        node(f"Wait: Retry {who}", "n8n-nodes-base.wait", {"amount": 60, "unit": "seconds"}, mx + 440, my, ver=1.1)
+    acols = [("ticket_id", "number"), ("kind", "string"), ("logins", "string"), ("outcome", "string"), ("dry_run", "boolean"),
+             ("details", "string"), ("at", "string"), ("payload", "string")]
+    node("[Data Table] Log Applying", "n8n-nodes-base.dataTable", {"resource": "row", "operation": "insert", "dataTableId": table, "columns": {
+        "mappingMode": "defineBelow", "matchingColumns": [], "value": {
+            "ticket_id": "={{ $json.ticket_id }}", "kind": "guest_access", "logins": "={{ $json.plan.login }}", "outcome": "applying", "dry_run": False,
+            "details": "={{ 'погоджено: ' + $json.approved_by }}", "at": "={{ new Date().toISOString() }}", "payload": "={{ JSON.stringify($json.plan) }}"},
+        "schema": [{"id": c, "displayName": c, "required": False, "defaultMatch": False, "display": True, "type": t, "canBeUsedToMatch": True} for c, t in acols]},
+        "options": {}}, 1980, -360, ver=1.1)
     node("Mark Done", "n8n-nodes-base.set", mark("yes"), 4180, -360, ver=3.4)
     node("Mark Failed", "n8n-nodes-base.set", mark("no"), 4180, -120, ver=3.4)
     node("Merge Results", "n8n-nodes-base.merge", {"numberInputs": 3}, 4400, 0, ver=3.2)
@@ -285,7 +299,7 @@ def build(rm_id, rm_name, g_id, g_name, smtp_id, smtp_name, table_id):
          "private_notes": "={{ $json.private }}",
          "additionalFields": {"customFields": {"field": [{"id": "92", "value": "={{ $json.close ? 'Восстановление доступа' : '' }}"}]},
                               "status_id": "={{ $json.close ? $('Config').first().json.resolved_status_id : undefined }}",
-                              "assigned_to_id": "={{ $json.assign ? $('Config').first().json.admins_group_id : undefined }}"},
+                              "assigned_to_id": "={{ $json.assign ? $('Config').first().json.admins_group_id : ($json.approver_id || undefined) }}"},
          "options": {}}, 4840, 0, credentials=rmc, onError="continueRegularOutput")
     cols = [("ticket_id", "number"), ("kind", "string"), ("logins", "string"), ("outcome", "string"), ("dry_run", "boolean"),
             ("details", "string"), ("at", "string"), ("payload", "string")]
@@ -303,6 +317,7 @@ def build(rm_id, rm_name, g_id, g_name, smtp_id, smtp_name, table_id):
                  ("Code: Build Mails", "Mails Ready?"), ("Mark Done", "Merge Results"), ("Merge Results", "Code: Build Report"),
                  ("Code: Build Report", "[Redmine] Update Ticket"), ("[Redmine] Update Ticket", "[Data Table] Log Result")]:
         link(a, b)
+    link("Apply Now?", "[Data Table] Log Applying", 0)   # перший гілка: запис «applying», щоб наступний запуск не почав видачу вдруге
     link("Apply Now?", "[Crypto] Random Bytes", 0)
     link("[Crypto] Random Bytes", "Code: Generate Secrets")
     link("Code: Generate Secrets", "Mark Failed", 1)
@@ -316,11 +331,19 @@ def build(rm_id, rm_name, g_id, g_name, smtp_id, smtp_name, table_id):
     link("Mails Ready?", "[Mail] Send Password", 0)
     link("Mails Ready?", "Mark Failed", 1)
     link("[Mail] Send Password", "Send Codes Mail?", 0)
-    link("[Mail] Send Password", "Mark Failed", 1)
+    link("[Mail] Send Password", "Code: Retry Password", 1)
+    link("Code: Retry Password", "More Retries Password?")
+    link("More Retries Password?", "Wait: Retry Password", 0)
+    link("More Retries Password?", "Mark Failed", 1)
+    link("Wait: Retry Password", "[Mail] Send Password")
     link("Send Codes Mail?", "[Mail] Send Codes", 0)
     link("Send Codes Mail?", "Mark Done", 1)
     link("[Mail] Send Codes", "Mark Done", 0)
-    link("[Mail] Send Codes", "Mark Failed", 1)
+    link("[Mail] Send Codes", "Code: Retry Codes", 1)
+    link("Code: Retry Codes", "More Retries Codes?")
+    link("More Retries Codes?", "Wait: Retry Codes", 0)
+    link("More Retries Codes?", "Mark Failed", 1)
+    link("Wait: Retry Codes", "[Mail] Send Codes")
     link("Mark Failed", "Merge Results", 0, 1)
     settings = {"executionOrder": "v1", "saveDataSuccessExecution": "none", "saveDataErrorExecution": "none",
                 "saveManualExecutions": False, "saveExecutionProgress": False}

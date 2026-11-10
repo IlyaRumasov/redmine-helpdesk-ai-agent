@@ -302,7 +302,7 @@ def build(rm_id, rm_name, ldap_id, ldap_name, g_id, g_name, smtp_id, smtp_name, 
     node("[Mail] Send Codes", "n8n-nodes-base.emailSend", {"fromEmail": cfgv("mail_from"), "toEmail": "={{ $json.to }}",
          "subject": "={{ $json.subject }}", "emailFormat": "text", "text": "={{ $json.text }}", "options": {"appendAttribution": False}},
          2860, -300, ver=2.1, credentials={"smtp": {"id": smtp_id, "name": smtp_name}}, onError="continueErrorOutput",
-         retryOnFail=True, maxTries=3, waitBetweenTries=15000)  # SMTP-релей Google інколи відповідає 421 «Try again later»
+         retryOnFail=True, maxTries=5, waitBetweenTries=5000)  # SMTP-релей Google інколи відповідає 421 «Try again later»
     node("Mark Done", "n8n-nodes-base.set", mark("yes"), 3080, -340, ver=3.4)
     node("Mark Failed", "n8n-nodes-base.set", mark("no"), 3080, -160, ver=3.4)
     node("Merge Results", "n8n-nodes-base.merge", {"numberInputs": 3}, 3300, 0, ver=3.2)
